@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -37,25 +39,26 @@ type (
 	// A d4 writer implements the io.Writer Interface by implementing Write() and Close()
 	// it accepts an io.Writer as sink
 	d4Writer struct {
-		w io.Writer
+		w        io.Writer
+		key      []byte
+		d4header []byte
+		payload  []byte
 	}
 
 	d4S struct {
 		src       io.Reader
-		dst       io.Writer
+		dst       d4Writer
 		confdir   string
 		d4error   uint8
 		errnoCopy uint8
+		debug     bool
 		conf      d4params
-		//header    d4Header
-		d4header []byte
-		payload  []byte
 	}
 
 	d4params struct {
 		uuid        []byte
 		snaplen     uint32
-		key         string
+		key         []byte
 		version     uint8
 		source      string
 		destination string
@@ -74,10 +77,6 @@ var (
 	confdir = flag.String("c", "", "configuration directory")
 	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout")
 )
-
-func newD4Writer(writer io.Writer) *d4Writer {
-	return &d4Writer{w: writer}
-}
 
 func main() {
 
@@ -113,17 +112,18 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	d4.confdir = *confdir
 
 	// Output logging before closing if debug is enabled
 	if *debug == true {
+		d4.debug = true
 		defer fmt.Print(&buf)
 	}
 
-	d4.confdir = *confdir
-	//var d4 = d4loadConfig(confdir)
 	if d4loadConfig(d4p) == true {
-		initHeader(d4p)
-		//d4transfer(d4p)
+		if d4.dst.initHeader(d4p) == true {
+			d4transfer(d4p)
+		}
 	}
 }
 
@@ -156,7 +156,7 @@ func d4loadConfig(d4 *d4S) bool {
 	// parse snaplen to uint32
 	tmp, _ := strconv.ParseUint(string(readConfFile(d4, "snaplen")), 10, 32)
 	(*d4).conf.snaplen = uint32(tmp)
-	(*d4).conf.key = string(readConfFile(d4, "key"))
+	(*d4).conf.key = readConfFile(d4, "key")
 	// parse version to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "version")), 10, 8)
 	(*d4).conf.version = uint8(tmp)
@@ -166,7 +166,11 @@ func d4loadConfig(d4 *d4S) bool {
 	return d4checkConfig(d4)
 }
 
-// QUICK IMPLEM, REVISE
+func newD4Writer(writer io.Writer, key []byte) d4Writer {
+	return d4Writer{w: writer, key: key}
+}
+
+// TODO QUICK IMPLEM, REVISE
 func d4checkConfig(d4 *d4S) bool {
 
 	//TODO implement other destination file, fifo unix_socket ...
@@ -180,10 +184,10 @@ func d4checkConfig(d4 *d4S) bool {
 
 	switch (*d4).conf.destination {
 	case "stdout":
-		(*d4).dst = newD4Writer(os.Stdout)
+		(*d4).dst = newD4Writer(os.Stdout, (*d4).conf.key)
 	case "file":
 		f, _ := os.Create("test.txt")
-		(*d4).dst = newD4Writer(f)
+		(*d4).dst = newD4Writer(f, (*d4).conf.key)
 	}
 
 	if len((*d4).conf.uuid) == 0 {
@@ -210,30 +214,108 @@ func generateUUIDv4() []byte {
 	return []byte(uuid[:])
 }
 
-//TODO turn this ugly mess into a Framer
-func initHeader(d4 *d4S) bool {
-	// zero out the header
-	(*d4).d4header = make([]byte, HDR_SIZE)
-	// put version a type into the header
-	(*d4).d4header[0] = (*d4).conf.version
-	(*d4).d4header[1] = (*d4).conf.ttype
-	// put uuid into the header
-	ps := 2
-	pe := ps + UUID_SIZE
-	copy((*d4).d4header[ps:pe], (*d4).conf.uuid)
-	// timestamp
+func d4transfer(d4 *d4S) {
+	src := (*d4).src
+	dst := (*d4).dst
+	buf := make([]byte, (*d4).conf.snaplen)
+	varybuf := make([]byte, 0)
+
+	for {
+		// Take a slice of snaplen
+		nread, err := src.Read(buf)
+		if err != nil {
+			// if EOF, we just wait for more data
+			if err != io.EOF {
+				log.Fatal(err)
+			} else if (*d4).debug {
+				log.Fatal(err)
+			}
+		}
+		// And push it into the d4writer -> sink chain
+		switch {
+		case uint32(nread) == (*d4).conf.snaplen:
+			dst.Write(buf)
+		case nread > 0 && uint32(nread) < (*d4).conf.snaplen:
+			varybuf = append(buf[:nread])
+			dst.Write(varybuf)
+		}
+	}
+}
+
+func (d4w *d4Writer) Write(bs []byte) (int, error) {
+	d4w.updateHeader(bs)
+	d4w.payload = bs
+	d4w.updateHMAC()
+	// Eventually write in the sink
+	d4w.w.Write(append(d4w.d4header, d4w.payload...))
+	return len(bs), nil
+}
+
+// TODO write go idiomatic err return values
+func (d4w *d4Writer) updateHeader(bs []byte) bool {
+	// zero out moving parts
+	copy(d4w.d4header[18:], make([]byte, 44))
 	timeUnix := time.Now().UnixNano()
-	ps = pe
-	pe = ps + TIMESTAMP_SIZE
-	binary.LittleEndian.PutUint64((*d4).d4header[ps:pe], uint64(timeUnix))
+	ps := 18
+	pe := ps + TIMESTAMP_SIZE
+	binary.LittleEndian.PutUint64(d4w.d4header[ps:pe], uint64(timeUnix))
 	// hmac is set to zero during hmac operations, so leave it alone
 	// still, we move the pointers
 	ps = pe
 	pe = ps + HMAC_SIZE
 	ps = pe
 	pe = ps + 4
-	// TODO put nread size instead of snaplen
-	binary.LittleEndian.PutUint32((*d4).d4header[ps:pe], (*d4).conf.snaplen)
+	// Set payload size
+	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(len(bs)))
+
+	return true
+}
+
+func (d4w *d4Writer) updateHMAC() bool {
+	h := hmac.New(sha256.New, d4w.key)
+	// version
+	h.Write(d4w.d4header[0:1])
+	// type
+	h.Write(d4w.d4header[1:2])
+	// uuid
+	h.Write(d4w.d4header[2:18])
+	// timestamp
+	h.Write(d4w.d4header[18:26])
+	// hmac (0)
+	h.Write(d4w.d4header[26:58])
+	// size
+	h.Write(d4w.d4header[58:])
+	// payload
+	h.Write(d4w.payload)
+	// final hmac
+	copy(d4w.d4header[26:58], h.Sum(nil))
+
+	return true
+}
+
+func (d4w *d4Writer) initHeader(d4 *d4S) bool {
+	// zero out the header
+	d4w.d4header = make([]byte, HDR_SIZE)
+	// put version a type into the header
+	d4w.d4header[0] = (*d4).conf.version
+	d4w.d4header[1] = (*d4).conf.ttype
+	// put uuid into the header
+	ps := 2
+	pe := ps + UUID_SIZE
+	copy(d4w.d4header[ps:pe], (*d4).conf.uuid)
+	// timestamp
+	timeUnix := time.Now().UnixNano()
+	ps = pe
+	pe = ps + TIMESTAMP_SIZE
+	binary.LittleEndian.PutUint64(d4w.d4header[ps:pe], uint64(timeUnix))
+	// hmac is set to zero during hmac operations, so leave it alone
+	// still, we move the pointers
+	ps = pe
+	pe = ps + HMAC_SIZE
+	ps = pe
+	pe = ps + 4
+	// init size of payload at 0
+	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(0))
 
 	// LittleEndian
 	// toto := append(make([]byte, 0), byte((*d4).conf.snaplen), byte((*d4).conf.snaplen>>8), byte((*d4).conf.snaplen>>16), byte((*d4).conf.snaplen>>24))
@@ -242,53 +324,8 @@ func initHeader(d4 *d4S) bool {
 	// tmpi := binary.BigEndian.Uint32(toto)
 	// tmpt := binary.LittleEndian.Uint32(others)
 	// fmt.Println(tmpi)
-	fmt.Println((*d4).d4header)
+	infof(fmt.Sprintf("Initialized a %d bytes header:\n", len(d4w.d4header)))
+	infof(fmt.Sprintf("%b\n", d4w.d4header))
 
 	return true
-}
-
-func d4transfer(d4 *d4S) {
-	src := (*d4).src
-	dst := (*d4).dst
-	buf := make([]byte, (*d4).conf.snaplen)
-
-	//for {
-	//n, _ := src.Read(buf)
-	_, _ = src.Read(buf)
-
-	dst.Write(buf)
-
-	// if n > 0 {
-	// update the header
-	// timestamp
-
-	/* 		h := hmac.New(sha256.New, []byte((*d4).conf.key))
-	   		h.Write((*d4).header.version)
-	   		h.Write((*d4).header.ttype)
-	   		h.Write((*d4).header.uuid)
-	   		h.Write((*d4).header.timestamp)
-	   		h.Write((*d4).header.hhmac)
-	   		h.Write((*d4).header.size)
-	   		h.Write([]byte(buf))
-
-	*/ //Add it to the header
-
-	// fmt.Println(base64.StdEncoding.EncodeToString(h.Sum(nil)))
-
-	// Write the packet in the sink
-	//}
-	//fmt.Println(n)
-	//fmt.Println(string(buf))
-	//}
-	//io.Copy((*d4).dst, (*d4).src)
-}
-
-func (d4w *d4Writer) Write(bs []byte) (int, error) {
-	d4w.w.Write(bs)
-	return len(bs), nil
-}
-
-func (d4w *d4Writer) Close() error {
-	// nothing ATM
-	return nil
 }
