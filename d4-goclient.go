@@ -39,10 +39,10 @@ type (
 	// A d4 writer implements the io.Writer Interface by implementing Write() and Close()
 	// it accepts an io.Writer as sink
 	d4Writer struct {
-		w        io.Writer
-		key      []byte
-		d4header []byte
-		payload  []byte
+		w   io.Writer
+		key []byte
+		fb  []byte
+		pb  []byte
 	}
 
 	d4S struct {
@@ -122,7 +122,7 @@ func main() {
 
 	if d4loadConfig(d4p) == true {
 		if d4.dst.initHeader(d4p) == true {
-			d4transfer(d4p)
+			io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
 		}
 	}
 }
@@ -202,6 +202,10 @@ func d4checkConfig(d4 *d4S) bool {
 		f.Close()
 	}
 
+	// Create the copy buffer
+	(*d4).dst.fb = make([]byte, HDR_SIZE+(*d4).conf.snaplen)
+	(*d4).dst.pb = make([]byte, (*d4).conf.snaplen)
+
 	return true
 }
 
@@ -214,107 +218,61 @@ func generateUUIDv4() []byte {
 	return []byte(uuid[:])
 }
 
-func d4transfer(d4 *d4S) {
-	src := (*d4).src
-	dst := (*d4).dst
-	buf := make([]byte, (*d4).conf.snaplen)
-	varybuf := make([]byte, 0)
-
-	for {
-		// Take a slice of snaplen
-		nread, err := src.Read(buf)
-		if err != nil {
-			// if EOF, we just wait for more data
-			if err != io.EOF {
-				log.Fatal(err)
-			} else if (*d4).debug {
-				os.Exit(0)
-			}
-		}
-		// And push it into the d4writer -> sink chain
-		switch {
-		case uint32(nread) == (*d4).conf.snaplen:
-			dst.Write(buf)
-		case nread > 0 && uint32(nread) < (*d4).conf.snaplen:
-			varybuf = append(buf[:nread])
-			dst.Write(varybuf)
-		}
-	}
-}
-
 func (d4w *d4Writer) Write(bs []byte) (int, error) {
-	d4w.updateHeader(bs)
-	d4w.payload = bs
-	d4w.updateHMAC()
+	// bs is pb
+	// zero out moving parts of the frame
+	copy(d4w.fb[18:62], make([]byte, 44))
+	copy(d4w.fb[62:], make([]byte, 62+len(bs)))
+	// update headers
+	d4w.updateHeader(len(bs))
+	// Copy payload after the header
+	copy(d4w.fb[62:62+len(bs)], bs)
+	// Now that the packet is complete, compute hmac
+	d4w.updateHMAC(len(bs))
 	// Eventually write binary in the sink
-	binary.Write(d4w.w, binary.LittleEndian, append(d4w.d4header, d4w.payload...))
+	err := binary.Write(d4w.w, binary.LittleEndian, d4w.fb[:62+len(bs)])
+	if err != nil {
+		log.Fatal(err)
+	}
 	return len(bs), nil
 }
 
 // TODO write go idiomatic err return values
-func (d4w *d4Writer) updateHeader(bs []byte) bool {
-	// zero out moving parts
-	copy(d4w.d4header[18:], make([]byte, 44))
+func (d4w *d4Writer) updateHeader(lenbs int) bool {
 	timeUnix := time.Now().Unix()
-	ps := 18
-	pe := ps + TIMESTAMP_SIZE
-	binary.LittleEndian.PutUint64(d4w.d4header[ps:pe], uint64(timeUnix))
-	// hmac is set to zero during hmac operations, so leave it alone
-	// still, we move the pointers
-	ps = pe
-	pe = ps + HMAC_SIZE
-	ps = pe
-	pe = ps + 4
-	// Set payload size
-	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(len(bs)))
+	binary.LittleEndian.PutUint64(d4w.fb[18:26], uint64(timeUnix))
+	binary.LittleEndian.PutUint32(d4w.fb[58:62], uint32(lenbs))
 	return true
 }
 
-func (d4w *d4Writer) updateHMAC() bool {
+func (d4w *d4Writer) updateHMAC(ps int) bool {
 	h := hmac.New(sha256.New, d4w.key)
-	// version
-	h.Write(d4w.d4header[0:1])
-	// type
-	h.Write(d4w.d4header[1:2])
-	// uuid
-	h.Write(d4w.d4header[2:18])
-	// timestamp
-	h.Write(d4w.d4header[18:26])
-	// hmac (0)
+	h.Write(d4w.fb[0:1])
+	h.Write(d4w.fb[1:2])
+	h.Write(d4w.fb[2:18])
+	h.Write(d4w.fb[18:26])
 	h.Write(make([]byte, 32))
-	// size
-	h.Write(d4w.d4header[58:])
-	// payload
-	h.Write(d4w.payload)
-	// final hmac
-	copy(d4w.d4header[26:58], h.Sum(nil))
+	h.Write(d4w.fb[58:62])
+	h.Write(d4w.fb[62 : 62+ps])
+	copy(d4w.fb[26:58], h.Sum(nil))
 	return true
 }
 
 func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	// zero out the header
-	d4w.d4header = make([]byte, HDR_SIZE)
+	copy(d4w.fb[:HDR_SIZE], make([]byte, HDR_SIZE))
 	// put version a type into the header
-	d4w.d4header[0] = (*d4).conf.version
-	d4w.d4header[1] = (*d4).conf.ttype
+	d4w.fb[0] = (*d4).conf.version
+	d4w.fb[1] = (*d4).conf.ttype
 	// put uuid into the header
-	ps := 2
-	pe := ps + UUID_SIZE
-	copy(d4w.d4header[ps:pe], (*d4).conf.uuid)
+	copy(d4w.fb[2:18], (*d4).conf.uuid)
 	// timestamp
 	timeUnix := time.Now().UnixNano()
-	ps = pe
-	pe = ps + TIMESTAMP_SIZE
-	binary.LittleEndian.PutUint64(d4w.d4header[ps:pe], uint64(timeUnix))
+	binary.LittleEndian.PutUint64(d4w.fb[18:26], uint64(timeUnix))
 	// hmac is set to zero during hmac operations, so leave it alone
-	// still, we move the pointers
-	ps = pe
-	pe = ps + HMAC_SIZE
-	ps = pe
-	pe = ps + 4
 	// init size of payload at 0
-	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(0))
-	infof(fmt.Sprintf("Initialized a %d bytes header:\n", len(d4w.d4header)))
-	infof(fmt.Sprintf("%b\n", d4w.d4header))
+	binary.LittleEndian.PutUint32(d4w.fb[58:62], uint32(0))
+	infof(fmt.Sprintf("Initialized a %d bytes header:\n", HDR_SIZE))
+	infof(fmt.Sprintf("%b\n", d4w.fb[:HDR_SIZE]))
 	return true
 }
