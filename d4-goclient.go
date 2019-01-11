@@ -228,7 +228,7 @@ func d4transfer(d4 *d4S) {
 			if err != io.EOF {
 				log.Fatal(err)
 			} else if (*d4).debug {
-				log.Fatal(err)
+				os.Exit(0)
 			}
 		}
 		// And push it into the d4writer -> sink chain
@@ -267,7 +267,6 @@ func (d4w *d4Writer) updateHeader(bs []byte) bool {
 	pe = ps + 4
 	// Set payload size
 	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(len(bs)))
-
 	return true
 }
 
@@ -282,14 +281,13 @@ func (d4w *d4Writer) updateHMAC() bool {
 	// timestamp
 	h.Write(d4w.d4header[18:26])
 	// hmac (0)
-	h.Write(d4w.d4header[26:58])
+	h.Write(make([]byte, 32))
 	// size
 	h.Write(d4w.d4header[58:])
 	// payload
 	h.Write(d4w.payload)
 	// final hmac
 	copy(d4w.d4header[26:58], h.Sum(nil))
-
 	return true
 }
 
@@ -316,16 +314,7 @@ func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	pe = ps + 4
 	// init size of payload at 0
 	binary.LittleEndian.PutUint32(d4w.d4header[ps:pe], uint32(0))
-
-	// LittleEndian
-	// toto := append(make([]byte, 0), byte((*d4).conf.snaplen), byte((*d4).conf.snaplen>>8), byte((*d4).conf.snaplen>>16), byte((*d4).conf.snaplen>>24))
-	// BigEndian
-	// toto := append(make([]byte, 0), byte((*d4).conf.snaplen>>24), byte((*d4).conf.snaplen>>16), byte((*d4).conf.snaplen>>8), byte((*d4).conf.snaplen))
-	// tmpi := binary.BigEndian.Uint32(toto)
-	// tmpt := binary.LittleEndian.Uint32(others)
-	// fmt.Println(tmpi)
 	infof(fmt.Sprintf("Initialized a %d bytes header:\n", len(d4w.d4header)))
 	infof(fmt.Sprintf("%b\n", d4w.d4header))
-
 	return true
 }
