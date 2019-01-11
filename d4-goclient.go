@@ -246,8 +246,8 @@ func (d4w *d4Writer) Write(bs []byte) (int, error) {
 	d4w.updateHeader(bs)
 	d4w.payload = bs
 	d4w.updateHMAC()
-	// Eventually write in the sink
-	d4w.w.Write(append(d4w.d4header, d4w.payload...))
+	// Eventually write binary in the sink
+	binary.Write(d4w.w, binary.LittleEndian, append(d4w.d4header, d4w.payload...))
 	return len(bs), nil
 }
 
@@ -255,7 +255,7 @@ func (d4w *d4Writer) Write(bs []byte) (int, error) {
 func (d4w *d4Writer) updateHeader(bs []byte) bool {
 	// zero out moving parts
 	copy(d4w.d4header[18:], make([]byte, 44))
-	timeUnix := time.Now().UnixNano()
+	timeUnix := time.Now().Unix()
 	ps := 18
 	pe := ps + TIMESTAMP_SIZE
 	binary.LittleEndian.PutUint64(d4w.d4header[ps:pe], uint64(timeUnix))
