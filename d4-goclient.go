@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	//BSD 3
@@ -207,6 +209,17 @@ func d4checkConfig(d4 *d4S) bool {
 	(*d4).dst.pb = make([]byte, (*d4).conf.snaplen)
 
 	return true
+}
+
+func isNet(d []byte) (bool, []string) {
+	ss := strings.Split(string(d), ":")
+	if len(ss) != 1 {
+		if net.ParseIP(ss[0]) != nil {
+			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
+			return true, make([]string, 0)
+		}
+	}
+	return false, ss
 }
 
 func generateUUIDv4() []byte {
