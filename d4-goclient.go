@@ -144,7 +144,7 @@ func readConfFile(d4 *d4S, fileName string) []byte {
 		log.Fatal(err)
 	}
 	// removes 1 for \n
-	return data[:count-1]
+	return bytes.TrimSuffix(data[:count], []byte("\n"))
 }
 
 func d4loadConfig(d4 *d4S) bool {
@@ -152,7 +152,21 @@ func d4loadConfig(d4 *d4S) bool {
 	(*d4).conf = d4params{}
 	(*d4).conf.source = string(readConfFile(d4, "source"))
 	(*d4).conf.destination = string(readConfFile(d4, "destination"))
-	(*d4).conf.uuid = readConfFile(d4, "uuid")
+	tmpu, err := uuid.FromBytes(readConfFile(d4, "uuid"))
+	if err != nil {
+		// generate new uuid
+		(*d4).conf.uuid = generateUUIDv4()
+		// And push it into the conf file
+		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// store as canonical representation
+		f.WriteString(fmt.Sprintf("%s", uuid.FromBytesOrNil((*d4).conf.uuid)) + "\n")
+		f.Close()
+	} else {
+		(*d4).conf.uuid = tmpu.Bytes()
+	}
 	// parse snaplen to uint32
 	tmp, _ := strconv.ParseUint(string(readConfFile(d4, "snaplen")), 10, 32)
 	(*d4).conf.snaplen = uint32(tmp)
@@ -190,18 +204,6 @@ func d4checkConfig(d4 *d4S) bool {
 		(*d4).dst = newD4Writer(f, (*d4).conf.key)
 	}
 
-	if len((*d4).conf.uuid) == 0 {
-		// UUID not set, generate a new one
-		(*d4).conf.uuid = generateUUIDv4()
-		// And push it into the conf file
-		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-		f.WriteString(string((*d4).conf.uuid) + "\n")
-		f.Close()
-	}
-
 	// Create the copy buffer
 	(*d4).dst.fb = make([]byte, HDR_SIZE+(*d4).conf.snaplen)
 	(*d4).dst.pb = make([]byte, (*d4).conf.snaplen)
@@ -215,7 +217,7 @@ func generateUUIDv4() []byte {
 		log.Fatal(err)
 	}
 	infof(fmt.Sprintf("UUIDv4: %s\n", uuid))
-	return []byte(uuid[:])
+	return uuid.Bytes()
 }
 
 func (d4w *d4Writer) Write(bs []byte) (int, error) {
