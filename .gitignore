@@ -4,7 +4,8 @@
 *.dll
 *.so
 *.dylib
-d4-goclient
+d4-amd64
+*.vscode
 
 # Test binary, build with `go test -c`
 *.test
