@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -197,13 +198,22 @@ func d4checkConfig(d4 *d4S) bool {
 		f, _ := os.Open("capture.pcap")
 		(*d4).src = f
 	}
-
-	switch (*d4).conf.destination {
-	case "stdout":
-		(*d4).dst = newD4Writer(os.Stdout, (*d4).conf.key)
-	case "file":
-		f, _ := os.Create("test.txt")
-		(*d4).dst = newD4Writer(f, (*d4).conf.key)
+	isn, dstnet := isNet((*d4).conf.destination)
+	if isn {
+		//conn, err := net.Dial("tcp", dstnet[0]+":"+dstnet[1])
+		conn, err := tls.Dial("tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			log.Fatal(err)
+		}
+		(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+	} else {
+		switch (*d4).conf.destination {
+		case "stdout":
+			(*d4).dst = newD4Writer(os.Stdout, (*d4).conf.key)
+		case "file":
+			f, _ := os.Create("test.txt")
+			(*d4).dst = newD4Writer(f, (*d4).conf.key)
+		}
 	}
 
 	// Create the copy buffer
@@ -213,15 +223,15 @@ func d4checkConfig(d4 *d4S) bool {
 	return true
 }
 
-func isNet(d []byte) (bool, []string) {
+func isNet(d string) (bool, []string) {
 	ss := strings.Split(string(d), ":")
 	if len(ss) != 1 {
 		if net.ParseIP(ss[0]) != nil {
 			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
-			return true, make([]string, 0)
+			return true, ss
 		}
 	}
-	return false, ss
+	return false, make([]string, 0)
 }
 
 func generateUUIDv4() []byte {
