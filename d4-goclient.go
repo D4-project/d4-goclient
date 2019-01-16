@@ -123,15 +123,43 @@ func main() {
 		defer fmt.Print(&buf)
 	}
 
-	if d4loadConfig(d4p) == true {
-		if d4.dst.initHeader(d4p) == true {
-			io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
+	// TODO add flags for timeouts / fail on disconnect
+	c := make(chan string)
+	for {
+		if set(d4p) {
+			go d4Copy(d4p, c)
+		} else {
+			go func() {
+				time.Sleep(5 * time.Second)
+				fmt.Println("Sleeping.. before retry")
+				c <- "done waiting"
+			}()
 		}
+		<-c
+	}
+}
+
+func set(d4 *d4S) bool {
+	if d4loadConfig(d4) {
+		if setReaderWriters(d4) {
+			if d4.dst.initHeader(d4) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func d4Copy(d4 *d4S, c chan string) {
+	_, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
+	if err != nil {
+		c <- fmt.Sprintf("%s", err)
 	}
 }
 
 func readConfFile(d4 *d4S, fileName string) []byte {
 	f, err := os.Open((*d4).confdir + "/" + fileName)
+	defer f.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,12 +189,12 @@ func d4loadConfig(d4 *d4S) bool {
 		(*d4).conf.uuid = generateUUIDv4()
 		// And push it into the conf file
 		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY|os.O_CREATE, 0666)
+		defer f.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
 		// store as canonical representation
 		f.WriteString(fmt.Sprintf("%s", uuid.FromBytesOrNil((*d4).conf.uuid)) + "\n")
-		f.Close()
 	} else {
 		(*d4).conf.uuid = tmpu.Bytes()
 	}
@@ -180,7 +208,7 @@ func d4loadConfig(d4 *d4S) bool {
 	// parse type to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "type")), 10, 8)
 	(*d4).conf.ttype = uint8(tmp)
-	return d4checkConfig(d4)
+	return true
 }
 
 func newD4Writer(writer io.Writer, key []byte) d4Writer {
@@ -188,7 +216,7 @@ func newD4Writer(writer io.Writer, key []byte) d4Writer {
 }
 
 // TODO QUICK IMPLEM, REVISE
-func d4checkConfig(d4 *d4S) bool {
+func setReaderWriters(d4 *d4S) bool {
 
 	//TODO implement other destination file, fifo unix_socket ...
 	switch (*d4).conf.source {
@@ -200,10 +228,15 @@ func d4checkConfig(d4 *d4S) bool {
 	}
 	isn, dstnet := isNet((*d4).conf.destination)
 	if isn {
-		//conn, err := net.Dial("tcp", dstnet[0]+":"+dstnet[1])
-		conn, err := tls.Dial("tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
-		if err != nil {
-			log.Fatal(err)
+		dial := net.Dialer{
+			DualStack:     true,
+			Timeout:       5 * time.Second,
+			KeepAlive:     2 * time.Hour,
+			FallbackDelay: 0,
+		}
+		conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
+		if errc != nil {
+			return false
 		}
 		(*d4).dst = newD4Writer(conn, (*d4).conf.key)
 	} else {
@@ -256,10 +289,7 @@ func (d4w *d4Writer) Write(bs []byte) (int, error) {
 	d4w.updateHMAC(len(bs))
 	// Eventually write binary in the sink
 	err := binary.Write(d4w.w, binary.LittleEndian, d4w.fb[:62+len(bs)])
-	if err != nil {
-		log.Fatal(err)
-	}
-	return len(bs), nil
+	return len(bs), err
 }
 
 // TODO write go idiomatic err return values
