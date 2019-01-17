@@ -1,3 +1,12 @@
+# d4-goclient
+
+A D4 project client (sensor) implementing the [D4 encapsulation protocol](https://github.com/D4-project/architecture/tree/master/format).
+
+The client can be used on different targets and architectures to collect network capture, logs, specific network monitoring and send it
+back to a [D4 server](https://github.com/D4-project/d4-core).
+
+For more information about the [D4 project](https://www.d4-project.org/).
+
 # Installation
 
 Fetch d4-goclient code and dependencies
