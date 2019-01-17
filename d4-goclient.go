@@ -152,7 +152,7 @@ func d4loadConfig(d4 *d4S) bool {
 	(*d4).conf = d4params{}
 	(*d4).conf.source = string(readConfFile(d4, "source"))
 	(*d4).conf.destination = string(readConfFile(d4, "destination"))
-	tmpu, err := uuid.FromBytes(readConfFile(d4, "uuid"))
+	tmpu, err := uuid.FromString(string(readConfFile(d4, "uuid")))
 	if err != nil {
 		// generate new uuid
 		(*d4).conf.uuid = generateUUIDv4()
