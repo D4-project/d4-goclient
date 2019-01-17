@@ -52,6 +52,10 @@ type (
 		src       io.Reader
 		dst       d4Writer
 		confdir   string
+		cka       time.Duration
+		ct        time.Duration
+		ce        bool
+		retry     time.Duration
 		d4error   uint8
 		errnoCopy uint8
 		debug     bool
@@ -77,8 +81,16 @@ var (
 		logger.Output(2, info)
 	}
 
+	tmpct, _    = time.ParseDuration("5mn")
+	tmpcka, _   = time.ParseDuration("2h")
+	tmpretry, _ = time.ParseDuration("30s")
+
 	confdir = flag.String("c", "", "configuration directory")
 	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout")
+	ce      = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
+	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
+	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
+	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
 )
 
 func main() {
@@ -107,6 +119,10 @@ func main() {
 		fmt.Printf("destination - the destination where the data is written to\n")
 		fmt.Printf("\n")
 		fmt.Printf("-v [TRUE] for verbose output on stdout")
+		fmt.Printf("-ce [TRUE] if destination is set to ip:port, use of tls")
+		fmt.Printf("-ct [300] if destination is set to ip:port, timeout in seconds")
+		fmt.Printf("-cka [3600] if destination is set to ip:port, keepalive in seconds")
+		fmt.Printf("-retry [5] if destination is set to ip:port, keepalive in seconds")
 		flag.PrintDefaults()
 	}
 
@@ -116,6 +132,10 @@ func main() {
 		os.Exit(1)
 	}
 	d4.confdir = *confdir
+	d4.ce = *ce
+	d4.ct = *ct
+	d4.cka = *cka
+	d4.retry = *retry
 
 	// Output logging before closing if debug is enabled
 	if *debug == true {
@@ -130,8 +150,8 @@ func main() {
 			go d4Copy(d4p, c)
 		} else {
 			go func() {
-				time.Sleep(5 * time.Second)
-				fmt.Println("Sleeping.. before retry")
+				time.Sleep(d4.retry)
+				infof(fmt.Sprintf("Sleeping for %f seconds before retry.\n", d4.retry.Seconds()))
 				c <- "done waiting"
 			}()
 		}
@@ -230,15 +250,23 @@ func setReaderWriters(d4 *d4S) bool {
 	if isn {
 		dial := net.Dialer{
 			DualStack:     true,
-			Timeout:       5 * time.Second,
-			KeepAlive:     2 * time.Hour,
+			Timeout:       (*d4).ct,
+			KeepAlive:     (*d4).cka,
 			FallbackDelay: 0,
 		}
-		conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
-		if errc != nil {
-			return false
+		if (*d4).ce == true {
+			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
+			if errc != nil {
+				return false
+			}
+			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+		} else {
+			conn, errc := dial.Dial("tcp", dstnet[0]+":"+dstnet[1])
+			if errc != nil {
+				return false
+			}
+			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
 		}
-		(*d4).dst = newD4Writer(conn, (*d4).conf.key)
 	} else {
 		switch (*d4).conf.destination {
 		case "stdout":
