@@ -120,9 +120,9 @@ func main() {
 		fmt.Printf("\n")
 		fmt.Printf("-v [TRUE] for verbose output on stdout")
 		fmt.Printf("-ce [TRUE] if destination is set to ip:port, use of tls")
-		fmt.Printf("-ct [300] if destination is set to ip:port, timeout in seconds")
-		fmt.Printf("-cka [3600] if destination is set to ip:port, keepalive in seconds")
-		fmt.Printf("-retry [5] if destination is set to ip:port, keepalive in seconds")
+		fmt.Printf("-ct [300] if destination is set to ip:port, timeout")
+		fmt.Printf("-cka [3600] if destination is set to ip:port, keepalive")
+		fmt.Printf("-retry [5] if destination is set to ip:port, retry period ")
 		flag.PrintDefaults()
 	}
 
@@ -143,17 +143,18 @@ func main() {
 		defer fmt.Print(&buf)
 	}
 
-	// TODO add flags for timeouts / fail on disconnect
 	c := make(chan string)
 	for {
 		if set(d4p) {
 			go d4Copy(d4p, c)
-		} else {
+		} else if d4.retry > 0 {
 			go func() {
 				time.Sleep(d4.retry)
 				infof(fmt.Sprintf("Sleeping for %f seconds before retry.\n", d4.retry.Seconds()))
 				c <- "done waiting"
 			}()
+		} else {
+			panic("Unrecoverable error without retry.")
 		}
 		<-c
 	}
@@ -274,6 +275,8 @@ func setReaderWriters(d4 *d4S) bool {
 		case "file":
 			f, _ := os.Create("test.txt")
 			(*d4).dst = newD4Writer(f, (*d4).conf.key)
+		default:
+			panic(fmt.Sprintf("No suitable destination found, given :%q", (*d4).conf.destination))
 		}
 	}
 
