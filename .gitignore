@@ -4,7 +4,6 @@
 *.dll
 *.so
 *.dylib
-d4-amd64
 *.vscode
 
 # Test binary, build with `go test -c`
@@ -12,3 +11,12 @@ d4-amd64
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Output binaries
+d4-arm5l
+d4-amd64l
+# Output binaries from gox
+d4-goclient_*
+
+# Configuration files
+/conf.sample/*
