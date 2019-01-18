@@ -5,10 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -56,6 +58,8 @@ type (
 		ct        time.Duration
 		ce        bool
 		retry     time.Duration
+		cc        bool
+		ca        x509.CertPool
 		d4error   uint8
 		errnoCopy uint8
 		debug     bool
@@ -91,6 +95,7 @@ var (
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
 	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
+	cc      = flag.Bool("cc", false, "Check TLS certificate againt rootCA.crt")
 )
 
 func main() {
@@ -120,6 +125,7 @@ func main() {
 		fmt.Printf("\n")
 		fmt.Printf("-v [TRUE] for verbose output on stdout")
 		fmt.Printf("-ce [TRUE] if destination is set to ip:port, use of tls")
+		fmt.Printf("-cc [FALSE] if destination is set to ip:port, verification of server's tls certificate againt rootCA.crt")
 		fmt.Printf("-ct [300] if destination is set to ip:port, timeout")
 		fmt.Printf("-cka [3600] if destination is set to ip:port, keepalive")
 		fmt.Printf("-retry [5] if destination is set to ip:port, retry period ")
@@ -134,6 +140,7 @@ func main() {
 	d4.confdir = *confdir
 	d4.ce = *ce
 	d4.ct = *ct
+	d4.cc = *cc
 	d4.cka = *cka
 	d4.retry = *retry
 
@@ -195,7 +202,7 @@ func readConfFile(d4 *d4S, fileName string) []byte {
 	if err := f.Close(); err != nil {
 		log.Fatal(err)
 	}
-	// removes 1 for \n
+	// trim \n if present
 	return bytes.TrimSuffix(data[:count], []byte("\n"))
 }
 
@@ -229,6 +236,15 @@ func d4loadConfig(d4 *d4S) bool {
 	// parse type to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "type")), 10, 8)
 	(*d4).conf.ttype = uint8(tmp)
+	// Add the custom CA cert in D4 certpool
+	if (*d4).cc {
+		certb, _ := ioutil.ReadFile((*d4).confdir + "rootCA.crt")
+		(*d4).ca = *x509.NewCertPool()
+		ok := (*d4).ca.AppendCertsFromPEM(certb)
+		if !ok {
+			panic("Failed to parse provided root certificate.")
+		}
+	}
 	return true
 }
 
@@ -255,9 +271,19 @@ func setReaderWriters(d4 *d4S) bool {
 			KeepAlive:     (*d4).cka,
 			FallbackDelay: 0,
 		}
+		tlsc := tls.Config{
+			InsecureSkipVerify: true,
+		}
+		if (*d4).cc {
+			tlsc = tls.Config{
+				InsecureSkipVerify: false,
+				RootCAs:            &(*d4).ca,
+			}
+		}
 		if (*d4).ce == true {
-			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tls.Config{InsecureSkipVerify: true})
+			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tlsc)
 			if errc != nil {
+				fmt.Println(errc)
 				return false
 			}
 			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
