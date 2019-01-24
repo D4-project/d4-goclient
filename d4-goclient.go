@@ -136,6 +136,9 @@ func main() {
 	if flag.NFlag() == 0 || *confdir == "" {
 		flag.Usage()
 		os.Exit(1)
+	} else {
+		*confdir = strings.TrimSuffix(*confdir, "/")
+		*confdir = strings.TrimSuffix(*confdir, "\\")
 	}
 	d4.confdir = *confdir
 	d4.ce = *ce
@@ -186,7 +189,7 @@ func d4Copy(d4 *d4S, c chan string) {
 }
 
 func readConfFile(d4 *d4S, fileName string) []byte {
-	f, err := os.Open((*d4).confdir + "/" + fileName)
+	f, err := os.OpenFile((*d4).confdir+"/"+fileName, os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -216,7 +219,7 @@ func d4loadConfig(d4 *d4S) bool {
 		// generate new uuid
 		(*d4).conf.uuid = generateUUIDv4()
 		// And push it into the conf file
-		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY|os.O_CREATE, 0666)
+		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY, 0666)
 		defer f.Close()
 		if err != nil {
 			log.Fatal(err)
