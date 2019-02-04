@@ -86,7 +86,7 @@ var (
 	}
 
 	tmpct, _    = time.ParseDuration("5mn")
-	tmpcka, _   = time.ParseDuration("2h")
+	tmpcka, _   = time.ParseDuration("30s")
 	tmpretry, _ = time.ParseDuration("30s")
 
 	confdir = flag.String("c", "", "configuration directory")
