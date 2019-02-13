@@ -154,9 +154,10 @@ func main() {
 	}
 
 	c := make(chan string)
+	k := make(chan string)
 	for {
 		if set(d4p) {
-			go d4Copy(d4p, c)
+			go d4Copy(d4p, c, k)
 		} else if d4.retry > 0 {
 			go func() {
 				time.Sleep(d4.retry)
@@ -166,7 +167,12 @@ func main() {
 		} else {
 			panic("Unrecoverable error without retry.")
 		}
-		<-c
+		select {
+		case <-c:
+			continue
+		case <-k:
+			os.Exit(0)
+		}
 	}
 }
 
@@ -181,11 +187,13 @@ func set(d4 *d4S) bool {
 	return false
 }
 
-func d4Copy(d4 *d4S, c chan string) {
-	_, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
+func d4Copy(d4 *d4S, c chan string, k chan string) {
+	nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
 	if err != nil {
 		c <- fmt.Sprintf("%s", err)
 	}
+	infof(fmt.Sprintf("Nread: %d, err: %s", nread, err))
+	k <- "EOF or connection reset: we the drop mic."
 }
 
 func readConfFile(d4 *d4S, fileName string) []byte {
