@@ -284,14 +284,14 @@ func setReaderWriters(d4 *d4S) bool {
 			}
 		}
 		if (*d4).ce == true {
-			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet[0]+":"+dstnet[1], &tlsc)
+			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
 			if errc != nil {
 				fmt.Println(errc)
 				return false
 			}
 			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
 		} else {
-			conn, errc := dial.Dial("tcp", dstnet[0]+":"+dstnet[1])
+			conn, errc := dial.Dial("tcp", dstnet)
 			if errc != nil {
 				return false
 			}
@@ -316,15 +316,54 @@ func setReaderWriters(d4 *d4S) bool {
 	return true
 }
 
-func isNet(d string) (bool, []string) {
-	ss := strings.Split(string(d), ":")
-	if len(ss) != 1 {
+func isNet(host string) (bool, string) {
+	// Check ipv6
+	if strings.HasPrefix(host, "[") {
+		// Parse an IP-Literal in RFC 3986 and RFC 6874.
+		// E.g., "[fe80::1]", "[fe80::1%25en0]", "[fe80::1]:80".
+		i := strings.LastIndex(host, "]")
+		if i < 0 {
+			panic("Unmatched [ in destination config")
+		}
+		if !validPort(host[i+1:]) {
+			panic("No valid port specified")
+		}
+		// trim brackets
+
+		if net.ParseIP(strings.Trim(host[:i+1], "[]")) != nil {
+			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", host[:i+1], host[i+1:]))
+			return true, host
+		}
+	} else {
+		// Ipv4
+		ss := strings.Split(string(host), ":")
+		if !validPort(":" + ss[1]) {
+			panic("No valid port specified")
+		}
 		if net.ParseIP(ss[0]) != nil {
 			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
-			return true, ss
+			return true, host
 		}
 	}
-	return false, make([]string, 0)
+	return false, host
+}
+
+// Reusing code from net.url
+// validOptionalPort reports whether port is either an empty string
+// or matches /^:\d*$/
+func validPort(port string) bool {
+	if port == "" {
+		return false
+	}
+	if port[0] != ':' {
+		return false
+	}
+	for _, b := range port[1:] {
+		if b < '0' || b > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func generateUUIDv4() []byte {
