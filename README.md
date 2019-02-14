@@ -2,7 +2,7 @@
   <img alt="d4-goclient" src="https://raw.githubusercontent.com/D4-project/d4-goclient/master/media/gopherd4.png" height="140" />
   <p align="center">
     <a href="https://github.com/D4-project/d4-goclient/releases/latest"><img alt="Release" src="https://img.shields.io/github/release/D4-project/d4-goclient.svg?style=flat-square"></a>
-    <a href="https://github.com/D4-project/d4-goclient/blob/master/LICENSE"><img alt="Software License" src="https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT"></a>
+    <a href="https://github.com/D4-project/d4-goclient/blob/master/LICENSE"><img alt="Software License" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
     <a href="https://goreportcard.com/report/github.com/D4-Project/d4-goclient"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/D4-Project/d4-goclient"></a>
   </p>
 </p>
