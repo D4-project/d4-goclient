@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -147,12 +148,8 @@ func main() {
 	d4.cka = *cka
 	d4.retry = *retry
 
-	// Output logging before closing if debug is enabled
-	if *debug == true {
-		d4.debug = true
-		defer fmt.Print(&buf)
-	}
-
+	s := make(chan os.Signal, 1)
+	signal.Notify(s, os.Interrupt, os.Kill)
 	c := make(chan string)
 	k := make(chan string)
 	for {
@@ -168,12 +165,26 @@ func main() {
 			panic("Unrecoverable error without retry.")
 		}
 		select {
-		case <-c:
+		case str := <-c:
+			fmt.Println(str)
 			continue
-		case <-k:
-			os.Exit(0)
+		case str := <-k:
+			fmt.Println(str)
+			exit(d4p, 1)
+		case <-s:
+			fmt.Println(" Exiting")
+			exit(d4p, 0)
 		}
 	}
+}
+
+func exit(d4 *d4S, exitcode int) {
+	// Output logging before closing if debug is enabled
+	if *debug == true {
+		(*d4).debug = true
+		fmt.Print(&buf)
+	}
+	os.Exit(exitcode)
 }
 
 func set(d4 *d4S) bool {
@@ -190,10 +201,16 @@ func set(d4 *d4S) bool {
 func d4Copy(d4 *d4S, c chan string, k chan string) {
 	nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
 	if err != nil {
-		c <- fmt.Sprintf("%s", err)
+		if (d4.retry.Seconds()) > 0 {
+			c <- fmt.Sprintf("%s", err)
+			return
+		} else {
+			k <- fmt.Sprintf("%s", err)
+			return
+		}
 	}
-	infof(fmt.Sprintf("Nread: %d, err: %s", nread, err))
-	k <- "EOF or connection reset: we the drop mic."
+	k <- fmt.Sprintf("EOF: Nread: %d", nread)
+	return
 }
 
 func readConfFile(d4 *d4S, fileName string) []byte {
