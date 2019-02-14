@@ -1,6 +1,13 @@
-# d4-goclient
+<p align="center">
+  <img alt="d4-goclient" src="https://raw.githubusercontent.com/bettercap/media/master/gopherd4.png" height="140" />
+  <p align="center">
+    <a href="https://github.com/D4-project/d4-goclient/releases/latest"><img alt="Release" src="https://img.shields.io/github/release/D4-project/d4-goclient.svg?style=flat-square"></a>
+    <a href="https://github.com/D4-project/d4-goclient/blob/master/LICENSE"><img alt="Software License" src="https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT"></a>
+    <a href="https://goreportcard.com/report/github.com/D4-Project/d4-goclient"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/D4-Project/d4-goclient"></a>
+  </p>
+</p>
 
-A D4 project client (sensor) implementing the [D4 encapsulation protocol](https://github.com/D4-project/architecture/tree/master/format).
+**d4-goclient** is a D4 project client (sensor) implementing the [D4 encapsulation protocol](https://github.com/D4-project/architecture/tree/master/format).
 
 The client can be used on different targets and architectures to collect network capture, logs, specific network monitoring and send it
 back to a [D4 server](https://github.com/D4-project/d4-core).
