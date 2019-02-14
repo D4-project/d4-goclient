@@ -24,19 +24,20 @@ import (
 )
 
 const (
-	// Version Size
+	// VERSION_SIZE
 	VERSION_SIZE = 1
-	// Type Size
+	// TYPE_SIZE
 	TYPE_SIZE = 1
-	// UUID v4 Size
+	// UUID_SIZE
 	UUID_SIZE = 16
-	// Timestamp Size
+	// TIMESTAMP_SIZE
 	TIMESTAMP_SIZE = 8
-	// HMAC-SHA256 MAC Size
+	// HMAC_SIZE
 	HMAC_SIZE = 32
-	// Payload size Size
+	// SSIZE payload size size
 	SSIZE = 4
 
+	// HDR_SIZE total header size
 	HDR_SIZE = VERSION_SIZE + TYPE_SIZE + UUID_SIZE + HMAC_SIZE + TIMESTAMP_SIZE + SSIZE
 )
 
@@ -204,10 +205,9 @@ func d4Copy(d4 *d4S, c chan string, k chan string) {
 		if (d4.retry.Seconds()) > 0 {
 			c <- fmt.Sprintf("%s", err)
 			return
-		} else {
-			k <- fmt.Sprintf("%s", err)
-			return
 		}
+		k <- fmt.Sprintf("%s", err)
+		return
 	}
 	k <- fmt.Sprintf("EOF: Nread: %d", nread)
 	return
