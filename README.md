@@ -42,7 +42,38 @@ make amd64l # for amd64 / linux
 See https://github.com/D4-project/d4-core/tree/master/server
 $IP_SRV being the d4-server's address, $PORT its listening port
 
+## Configuration files
+Part of the client configuration can be stored in folder containing the following files:
+
+ - key: your Pre-Shared-Key
+ - snaplen: default is 4096
+ - source: stdin
+ - destination: stdout, [fe80::ffff:ffff:ffff:a6fb]:4443, 127.0.0.1:4443
+ - type: D4 packat type, see [types](https://github.com/D4-project/architecture/tree/master/format)
+ - uuid: generated automiatically if empty
+ - version: protocol version
+ - rootCA.crt: optional CA certificate to check the server certificate
+
+## Flags
+
+```bash
+  -c string
+    	configuration directory
+  -cc
+    	Check TLS certificate against rootCA.crt
+  -ce
+    	Set to True, true, TRUE, 1, or t to enable TLS on network destination (default true)
+  -cka duration
+    	Keep Alive time human format, 0 to disable (default 30s)
+  -ct duration
+    	Set timeout in human format
+  -rt duration
+    	Time in human format before retry after connection failure, set to 0 to exit on failure (default 30s)
+  -v	Set to True, true, TRUE, 1, or t to enable verbose output on stdout
+```
+
 ## Pipe data into the client
+In the followin examples, destination is set to stdout.
 
 ### Some file
 ```bash
