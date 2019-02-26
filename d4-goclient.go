@@ -97,7 +97,7 @@ var (
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
 	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
-	cc      = flag.Bool("cc", false, "Check TLS certificate againt rootCA.crt")
+	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
 )
 
 func main() {
@@ -125,12 +125,6 @@ func main() {
 		fmt.Printf("source      - the source where the data is read from\n")
 		fmt.Printf("destination - the destination where the data is written to\n")
 		fmt.Printf("\n")
-		fmt.Printf("-v [TRUE] for verbose output on stdout")
-		fmt.Printf("-ce [TRUE] if destination is set to ip:port, use of tls")
-		fmt.Printf("-cc [FALSE] if destination is set to ip:port, verification of server's tls certificate againt rootCA.crt")
-		fmt.Printf("-ct [300] if destination is set to ip:port, timeout")
-		fmt.Printf("-cka [3600] if destination is set to ip:port, keepalive")
-		fmt.Printf("-retry [5] if destination is set to ip:port, retry period ")
 		flag.PrintDefaults()
 	}
 
