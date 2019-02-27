@@ -66,6 +66,7 @@ type (
 		errnoCopy uint8
 		debug     bool
 		conf      d4params
+		mh        metaHeader
 	}
 
 	d4params struct {
@@ -76,6 +77,11 @@ type (
 		source      string
 		destination string
 		ttype       uint8
+	}
+
+	metaHeader struct {
+		r   io.Reader
+		src io.Reader
 	}
 )
 
@@ -147,21 +153,38 @@ func main() {
 	signal.Notify(s, os.Interrupt, os.Kill)
 	c := make(chan string)
 	k := make(chan string)
+
 	for {
+		// init or reinit after retry
 		if set(d4p) {
+			// type 254 requires to send a meta-header first
+			if d4.conf.ttype == 254 {
+				if d4.hijackSource() {
+					nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
+					if err != nil {
+						panic(fmt.Sprintf("Cannot initiate session %s", err))
+					}
+					infof(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
+				}
+				d4p.restoreSource()
+			}
+			// copy routine
 			go d4Copy(d4p, c, k)
 		} else if d4.retry > 0 {
 			go func() {
+				infof(fmt.Sprintf("Sleeping for %.f seconds before retry...\n", d4.retry.Seconds()))
+				fmt.Printf("Sleeping for %.f seconds before retry...\n", d4.retry.Seconds())
 				time.Sleep(d4.retry)
-				infof(fmt.Sprintf("Sleeping for %f seconds before retry.\n", d4.retry.Seconds()))
 				c <- "done waiting"
 			}()
 		} else {
 			panic("Unrecoverable error without retry.")
 		}
+
+		// Block until we catch an event
 		select {
 		case str := <-c:
-			fmt.Println(str)
+			infof(str)
 			continue
 		case str := <-k:
 			fmt.Println(str)
@@ -258,6 +281,15 @@ func d4loadConfig(d4 *d4S) bool {
 	// parse type to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "type")), 10, 8)
 	(*d4).conf.ttype = uint8(tmp)
+	// parse meta header file
+	if tmp == 254 {
+		file, err := os.Open((*d4).confdir + "/metaheader.json")
+		if err != nil && err != io.EOF {
+			panic("Failed to open Meta-Header File.")
+		} else {
+			(*d4).mh = newMetaHeader(file)
+		}
+	}
 	// Add the custom CA cert in D4 certpool
 	if (*d4).cc {
 		certb, _ := ioutil.ReadFile((*d4).confdir + "rootCA.crt")
@@ -268,6 +300,10 @@ func d4loadConfig(d4 *d4S) bool {
 		}
 	}
 	return true
+}
+
+func newMetaHeader(mhr io.Reader) metaHeader {
+	return metaHeader{r: mhr}
 }
 
 func newD4Writer(writer io.Writer, key []byte) d4Writer {
@@ -434,7 +470,7 @@ func (d4w *d4Writer) updateHMAC(ps int) bool {
 func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	// zero out the header
 	copy(d4w.fb[:HDR_SIZE], make([]byte, HDR_SIZE))
-	// put version a type into the header
+	// put version and type into the header
 	d4w.fb[0] = (*d4).conf.version
 	d4w.fb[1] = (*d4).conf.ttype
 	// put uuid into the header
@@ -447,5 +483,30 @@ func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	binary.LittleEndian.PutUint32(d4w.fb[58:62], uint32(0))
 	infof(fmt.Sprintf("Initialized a %d bytes header:\n", HDR_SIZE))
 	infof(fmt.Sprintf("%b\n", d4w.fb[:HDR_SIZE]))
+	return true
+}
+
+// Cram the meta header in place of the source
+func (d4 *d4S) hijackSource() bool {
+	d4.mh.src = d4.src
+	d4.src = d4.mh.r
+	return d4.dst.hijackHeader()
+}
+
+// We use type 2 to send the meta header
+func (d4w *d4Writer) hijackHeader() bool {
+	d4w.fb[1] = 2
+	return true
+}
+
+// Meta Header Sent, we stuff our source back into d4
+func (d4 *d4S) restoreSource() bool {
+	d4.src = d4.mh.src
+	return d4.dst.restoreHeader()
+}
+
+// Switch back the header to 254
+func (d4w *d4Writer) restoreHeader() bool {
+	d4w.fb[1] = 254
 	return true
 }

@@ -52,7 +52,8 @@ Part of the client configuration can be stored in folder containing the followin
  - type: D4 packat type, see [types](https://github.com/D4-project/architecture/tree/master/format)
  - uuid: generated automiatically if empty
  - version: protocol version
- - rootCA.crt: optional CA certificate to check the server certificate
+ - rootCA.crt: optional : CA certificate to check the server certificate
+ - metaheader.json: optional : a json file describing feed's meta-type [types](https://github.com/D4-project/architecture/tree/master/format)
 
 ## Flags
 
