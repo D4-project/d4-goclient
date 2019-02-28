@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -39,6 +40,9 @@ const (
 
 	// HDR_SIZE total header size
 	HDR_SIZE = VERSION_SIZE + TYPE_SIZE + UUID_SIZE + HMAC_SIZE + TIMESTAMP_SIZE + SSIZE
+
+	// MH_FILE_LIMIT defines in bytes the max size of the json meta header file
+	MH_FILE_LIMIT = 100000
 )
 
 type (
@@ -282,12 +286,29 @@ func d4loadConfig(d4 *d4S) bool {
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "type")), 10, 8)
 	(*d4).conf.ttype = uint8(tmp)
 	// parse meta header file
+	data := make([]byte, MH_FILE_LIMIT)
 	if tmp == 254 {
 		file, err := os.Open((*d4).confdir + "/metaheader.json")
-		if err != nil && err != io.EOF {
+		if err != nil {
 			panic("Failed to open Meta-Header File.")
 		} else {
-			(*d4).mh = newMetaHeader(file)
+			if count, err := file.Read(data); err != nil {
+				panic("Failed to open Meta-Header File.")
+			} else {
+				if json.Valid(data[:count]) {
+					if checkType(data[:count]) {
+						if off, err := file.Seek(0, 0); err != nil || off != 0 {
+							panic(fmt.Sprintf("Cannot read Meta-Header file: %s", err))
+						} else {
+							(*d4).mh = newMetaHeader(file)
+						}
+					} else {
+						panic("A Meta-Header File should at least contain a 'type' field.")
+					}
+				} else {
+					panic("Failed to validate open Meta-Header File.")
+				}
+			}
 		}
 	}
 	// Add the custom CA cert in D4 certpool
@@ -300,6 +321,25 @@ func d4loadConfig(d4 *d4S) bool {
 		}
 	}
 	return true
+}
+
+func checkType(b []byte) bool {
+	var f interface{}
+	if err := json.Unmarshal(b, &f); err != nil {
+		return false
+	}
+	m := f.(map[string]interface{})
+	for k, v := range m {
+		if k == "type" {
+			switch v.(type) {
+			case string:
+				if v != nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func newMetaHeader(mhr io.Reader) metaHeader {
