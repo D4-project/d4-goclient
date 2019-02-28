@@ -162,7 +162,7 @@ func main() {
 		// init or reinit after retry
 		if set(d4p) {
 			// type 254 requires to send a meta-header first
-			if d4.conf.ttype == 254 {
+			if d4.conf.ttype == 254 || d4.conf.ttype == 2 {
 				if d4.hijackSource() {
 					nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
 					if err != nil {
@@ -287,7 +287,7 @@ func d4loadConfig(d4 *d4S) bool {
 	(*d4).conf.ttype = uint8(tmp)
 	// parse meta header file
 	data := make([]byte, MH_FILE_LIMIT)
-	if tmp == 254 {
+	if tmp == 254 || tmp == 2 {
 		file, err := os.Open((*d4).confdir + "/metaheader.json")
 		if err != nil {
 			panic("Failed to open Meta-Header File.")
