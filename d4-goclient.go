@@ -70,7 +70,8 @@ type (
 		errnoCopy uint8
 		debug     bool
 		conf      d4params
-		mh        metaHeader
+		mhb       *bytes.Buffer
+		mh        []byte
 	}
 
 	d4params struct {
@@ -81,11 +82,6 @@ type (
 		source      string
 		destination string
 		ttype       uint8
-	}
-
-	metaHeader struct {
-		r   io.Reader
-		src io.Reader
 	}
 )
 
@@ -158,19 +154,22 @@ func main() {
 	c := make(chan string)
 	k := make(chan string)
 
+	d4.mhb = bytes.NewBuffer(d4.mh)
+
 	for {
 		// init or reinit after retry
 		if set(d4p) {
 			// type 254 requires to send a meta-header first
 			if d4.conf.ttype == 254 || d4.conf.ttype == 2 {
-				if d4.hijackSource() {
-					nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
-					if err != nil {
-						panic(fmt.Sprintf("Cannot initiate session %s", err))
-					}
-					infof(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
+				// create a jsonreader
+				d4p.dst.hijackHeader()
+				// Ugly hack to skip bytes.Buffer WriteTo check that bypasses my fixed lenght buffer
+				nread, err := io.CopyBuffer(&d4.dst, struct{ io.Reader }{d4.mhb}, d4.dst.pb)
+				if err != nil {
+					panic(fmt.Sprintf("Cannot initiate session %s", err))
 				}
-				d4p.restoreSource()
+				infof(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
+				d4p.dst.restoreHeader()
 			}
 			// copy routine
 			go d4Copy(d4p, c, k)
@@ -289,6 +288,7 @@ func d4loadConfig(d4 *d4S) bool {
 	data := make([]byte, MH_FILE_LIMIT)
 	if tmp == 254 || tmp == 2 {
 		file, err := os.Open((*d4).confdir + "/metaheader.json")
+		defer file.Close()
 		if err != nil {
 			panic("Failed to open Meta-Header File.")
 		} else {
@@ -300,7 +300,9 @@ func d4loadConfig(d4 *d4S) bool {
 						if off, err := file.Seek(0, 0); err != nil || off != 0 {
 							panic(fmt.Sprintf("Cannot read Meta-Header file: %s", err))
 						} else {
-							(*d4).mh = newMetaHeader(file)
+							if err := json.Compact((*d4).mhb, data[:count]); err != nil {
+								fmt.Println(err)
+							}
 						}
 					} else {
 						panic("A Meta-Header File should at least contain a 'type' field.")
@@ -340,10 +342,6 @@ func checkType(b []byte) bool {
 		}
 	}
 	return false
-}
-
-func newMetaHeader(mhr io.Reader) metaHeader {
-	return metaHeader{r: mhr}
 }
 
 func newD4Writer(writer io.Writer, key []byte) d4Writer {
@@ -526,23 +524,10 @@ func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	return true
 }
 
-// Cram the meta header in place of the source
-func (d4 *d4S) hijackSource() bool {
-	d4.mh.src = d4.src
-	d4.src = d4.mh.r
-	return d4.dst.hijackHeader()
-}
-
 // We use type 2 to send the meta header
 func (d4w *d4Writer) hijackHeader() bool {
 	d4w.fb[1] = 2
 	return true
-}
-
-// Meta Header Sent, we stuff our source back into d4
-func (d4 *d4S) restoreSource() bool {
-	d4.src = d4.mh.src
-	return d4.dst.restoreHeader()
 }
 
 // Switch back the header to 254
