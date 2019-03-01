@@ -301,7 +301,7 @@ func d4loadConfig(d4 *d4S) bool {
 							panic(fmt.Sprintf("Cannot read Meta-Header file: %s", err))
 						} else {
 							if err := json.Compact((*d4).mhb, data[:count]); err != nil {
-								fmt.Println(err)
+								infof("Failed to compact meta header file")
 							}
 						}
 					} else {
