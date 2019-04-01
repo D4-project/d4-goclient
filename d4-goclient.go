@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -46,7 +47,6 @@ const (
 )
 
 type (
-
 	// A d4 writer implements the io.Writer Interface by implementing Write() and Close()
 	// it accepts an io.Writer as sink
 	d4Writer struct {
@@ -362,7 +362,6 @@ func setReaderWriters(d4 *d4S) bool {
 	isn, dstnet := isNet((*d4).conf.destination)
 	if isn {
 		dial := net.Dialer{
-			DualStack:     true,
 			Timeout:       (*d4).ct,
 			KeepAlive:     (*d4).cka,
 			FallbackDelay: 0,
@@ -410,32 +409,42 @@ func setReaderWriters(d4 *d4S) bool {
 }
 
 func isNet(host string) (bool, string) {
+	// DNS regex
+	validDNS := regexp.MustCompile(`^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9-_]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z
+ ]{2,3})$`)
 	// Check ipv6
 	if strings.HasPrefix(host, "[") {
 		// Parse an IP-Literal in RFC 3986 and RFC 6874.
-		// E.g., "[fe80::1]", "[fe80::1%25en0]", "[fe80::1]:80".
+		// E.g., "[fe80::1]:80".
 		i := strings.LastIndex(host, "]")
 		if i < 0 {
-			panic("Unmatched [ in destination config")
+			infof("Unmatched [ in destination config")
+			return false, ""
 		}
 		if !validPort(host[i+1:]) {
-			panic("No valid port specified")
+			infof("No valid port specified")
+			return false, ""
 		}
 		// trim brackets
-
 		if net.ParseIP(strings.Trim(host[:i+1], "[]")) != nil {
 			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", host[:i+1], host[i+1:]))
 			return true, host
 		}
 	} else {
-		// Ipv4
+		// Ipv4 or DNS name
 		ss := strings.Split(string(host), ":")
-		if !validPort(":" + ss[1]) {
-			panic("No valid port specified")
-		}
-		if net.ParseIP(ss[0]) != nil {
-			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
-			return true, host
+		if len(ss) > 1 {
+			if !validPort(":" + ss[1]) {
+				infof("No valid port specified")
+				return false, ""
+			}
+			if net.ParseIP(ss[0]) != nil {
+				infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
+				return true, host
+			} else if validDNS.MatchString(ss[0]) {
+				infof(fmt.Sprintf("DNS: %s, Server Port: %s\n", ss[0], ss[1]))
+				return true, host
+			}
 		}
 	}
 	return false, host
