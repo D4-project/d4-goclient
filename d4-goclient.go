@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	uuid "github.com/gofrs/uuid"
+	d4hash "github.com/D4-project/d4-golang-utils/crypto/hash"
 )
 
 const (
@@ -258,10 +258,15 @@ func d4loadConfig(d4 *d4S) bool {
 	(*d4).conf = d4params{}
 	(*d4).conf.source = string(readConfFile(d4, "source"))
 	(*d4).conf.destination = string(readConfFile(d4, "destination"))
-	tmpu, err := uuid.FromString(string(readConfFile(d4, "uuid")))
+	tmpu, err := d4hash.FromString(string(readConfFile(d4, "uuid")))
 	if err != nil {
 		// generate new uuid
-		(*d4).conf.uuid = generateUUIDv4()
+		tmp, err := d4hash.NewV4()
+		(*d4).conf.uuid = tmp.Bytes()
+		if err != nil {
+			log.Fatal(err)
+		}
+		infof(fmt.Sprintf("UUIDv4: %s\n", (*d4).conf.uuid))
 		// And push it into the conf file
 		f, err := os.OpenFile((*d4).confdir+"/uuid", os.O_WRONLY, 0666)
 		defer f.Close()
@@ -269,7 +274,7 @@ func d4loadConfig(d4 *d4S) bool {
 			log.Fatal(err)
 		}
 		// store as canonical representation
-		f.WriteString(fmt.Sprintf("%s", uuid.FromBytesOrNil((*d4).conf.uuid)) + "\n")
+		f.WriteString(fmt.Sprintf("%s", d4hash.FromBytesOrNil((*d4).conf.uuid)) + "\n")
 	} else {
 		(*d4).conf.uuid = tmpu.Bytes()
 	}
@@ -465,15 +470,6 @@ func validPort(port string) bool {
 		}
 	}
 	return true
-}
-
-func generateUUIDv4() []byte {
-	uuid, err := uuid.NewV4()
-	if err != nil {
-		log.Fatal(err)
-	}
-	infof(fmt.Sprintf("UUIDv4: %s\n", uuid))
-	return uuid.Bytes()
 }
 
 func (d4w *d4Writer) Write(bs []byte) (int, error) {

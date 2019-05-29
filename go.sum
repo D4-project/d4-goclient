@@ -1,0 +1,4 @@
+github.com/D4-project/d4-golang-utils v0.0.0-20190529140913-8d3df190a4b1 h1:X1MWs5hOzsiHje0BdZEU44tz7azlSRnsPYt91COPulE=
+github.com/D4-project/d4-golang-utils v0.0.0-20190529140913-8d3df190a4b1/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
+github.com/gofrs/uuid v3.2.0+incompatible h1:y12jRkkFxsd7GpqdSZ+/KCs/fJbqpEXSGd4+jfEaewE=
+github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
