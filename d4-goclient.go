@@ -21,8 +21,7 @@ import (
 	"strings"
 	"time"
 
-	//BSD 3
-	uuid "github.com/satori/go.uuid"
+	uuid "github.com/gofrs/uuid"
 )
 
 const (
