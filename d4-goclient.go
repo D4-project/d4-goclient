@@ -250,15 +250,22 @@ func readConfFile(d4 *d4S, fileName string) []byte {
 	if err := f.Close(); err != nil {
 		log.Fatal(err)
 	}
-	// trim \n if present
-	return bytes.TrimSuffix(data[:count], []byte("\n"))
+	// trim \r and \n if present
+	r := bytes.TrimSuffix(data[:count], []byte("\n"))
+	return bytes.TrimSuffix(r, []byte("\r"))
 }
 
 func d4loadConfig(d4 *d4S) bool {
 	// populate the map
 	(*d4).conf = d4params{}
 	(*d4).conf.source = string(readConfFile(d4, "source"))
+	if len((*d4).conf.source) < 1 {
+		log.Fatal("Unsupported source")
+	}
 	(*d4).conf.destination = string(readConfFile(d4, "destination"))
+	if len((*d4).conf.destination) < 1 {
+		log.Fatal("Unsupported Destination")
+	}
 	tmpu, err := uuid.FromString(string(readConfFile(d4, "uuid")))
 	if err != nil {
 		// generate new uuid
@@ -275,15 +282,27 @@ func d4loadConfig(d4 *d4S) bool {
 		(*d4).conf.uuid = tmpu.Bytes()
 	}
 	// parse snaplen to uint32
-	tmp, _ := strconv.ParseUint(string(readConfFile(d4, "snaplen")), 10, 32)
-	(*d4).conf.snaplen = uint32(tmp)
+	tmp, err := strconv.ParseUint(string(readConfFile(d4, "snaplen")), 10, 32)
+	if err != nil || tmp < 1 {
+		(*d4).conf.snaplen = uint32(4096)
+	} else {
+		(*d4).conf.snaplen = uint32(tmp)
+	}
 	(*d4).conf.key = readConfFile(d4, "key")
 	// parse version to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "version")), 10, 8)
-	(*d4).conf.version = uint8(tmp)
+	if err != nil || tmp < 1 {
+		(*d4).conf.version = uint8(1)
+	} else {
+		(*d4).conf.version = uint8(tmp)
+	}
 	// parse type to uint8
 	tmp, _ = strconv.ParseUint(string(readConfFile(d4, "type")), 10, 8)
-	(*d4).conf.ttype = uint8(tmp)
+	if err != nil || tmp < 1 {
+		log.Fatal("Unsupported type")
+	} else {
+		(*d4).conf.ttype = uint8(tmp)
+	}
 	// parse meta header file
 	data := make([]byte, MH_FILE_LIMIT)
 	if tmp == 254 || tmp == 2 {
