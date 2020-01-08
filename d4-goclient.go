@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	//BSD 3
 	config "github.com/D4-project/d4-golang-utils/config"
 	uuid "github.com/D4-project/d4-golang-utils/crypto/hash"
 )
