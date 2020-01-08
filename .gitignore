@@ -17,4 +17,4 @@ d4-amd64l
 d4-goclient_*
 
 # Configuration files
-/conf.sample/*
+/conf.*
