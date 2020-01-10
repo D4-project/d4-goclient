@@ -16,13 +16,12 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	//BSD 3
-	uuid "github.com/satori/go.uuid"
+	config "github.com/D4-project/d4-golang-utils/config"
+	uuid "github.com/D4-project/d4-golang-utils/crypto/hash"
 )
 
 const (
@@ -234,25 +233,7 @@ func d4Copy(d4 *d4S, c chan string, k chan string) {
 }
 
 func readConfFile(d4 *d4S, fileName string) []byte {
-	f, err := os.OpenFile((*d4).confdir+"/"+fileName, os.O_RDWR|os.O_CREATE, 0666)
-	defer f.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
-	data := make([]byte, 100)
-	count, err := f.Read(data)
-	if err != nil {
-		if err != io.EOF {
-			log.Fatal(err)
-		}
-	}
-	infof(fmt.Sprintf("read %d bytes: %q\n", count, data[:count]))
-	if err := f.Close(); err != nil {
-		log.Fatal(err)
-	}
-	// trim \r and \n if present
-	r := bytes.TrimSuffix(data[:count], []byte("\n"))
-	return bytes.TrimSuffix(r, []byte("\r"))
+	return config.ReadConfigFile((*d4).confdir, fileName)
 }
 
 func d4loadConfig(d4 *d4S) bool {
@@ -369,7 +350,6 @@ func newD4Writer(writer io.Writer, key []byte) d4Writer {
 
 // TODO QUICK IMPLEM, REVISE
 func setReaderWriters(d4 *d4S) bool {
-
 	//TODO implement other destination file, fifo unix_socket ...
 	switch (*d4).conf.source {
 	case "stdin":
@@ -378,7 +358,7 @@ func setReaderWriters(d4 *d4S) bool {
 		f, _ := os.Open("capture.pcap")
 		(*d4).src = f
 	}
-	isn, dstnet := isNet((*d4).conf.destination)
+	isn, dstnet := config.IsNet((*d4).conf.destination)
 	if isn {
 		dial := net.Dialer{
 			Timeout:       (*d4).ct,
@@ -424,66 +404,6 @@ func setReaderWriters(d4 *d4S) bool {
 	(*d4).dst.fb = make([]byte, HDR_SIZE+(*d4).conf.snaplen)
 	(*d4).dst.pb = make([]byte, (*d4).conf.snaplen)
 
-	return true
-}
-
-func isNet(host string) (bool, string) {
-	// DNS regex
-	validDNS := regexp.MustCompile(`^(([a-zA-Z]{1})|([a-zA-Z]{1}[a-zA-Z]{1})|([a-zA-Z]{1}[0-9]{1})|([0-9]{1}[a-zA-Z]{1})|([a-zA-Z0-9][a-zA-Z0-9-_]{1,61}[a-zA-Z0-9]))\.([a-zA-Z]{2,6}|[a-zA-Z0-9-]{2,30}\.[a-zA-Z
- ]{2,3})$`)
-	// Check ipv6
-	if strings.HasPrefix(host, "[") {
-		// Parse an IP-Literal in RFC 3986 and RFC 6874.
-		// E.g., "[fe80::1]:80".
-		i := strings.LastIndex(host, "]")
-		if i < 0 {
-			infof("Unmatched [ in destination config")
-			return false, ""
-		}
-		if !validPort(host[i+1:]) {
-			infof("No valid port specified")
-			return false, ""
-		}
-		// trim brackets
-		if net.ParseIP(strings.Trim(host[:i+1], "[]")) != nil {
-			infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", host[:i+1], host[i+1:]))
-			return true, host
-		}
-	} else {
-		// Ipv4 or DNS name
-		ss := strings.Split(string(host), ":")
-		if len(ss) > 1 {
-			if !validPort(":" + ss[1]) {
-				infof("No valid port specified")
-				return false, ""
-			}
-			if net.ParseIP(ss[0]) != nil {
-				infof(fmt.Sprintf("Server IP: %s, Server Port: %s\n", ss[0], ss[1]))
-				return true, host
-			} else if validDNS.MatchString(ss[0]) {
-				infof(fmt.Sprintf("DNS: %s, Server Port: %s\n", ss[0], ss[1]))
-				return true, host
-			}
-		}
-	}
-	return false, host
-}
-
-// Reusing code from net.url
-// validOptionalPort reports whether port is either an empty string
-// or matches /^:\d*$/
-func validPort(port string) bool {
-	if port == "" {
-		return false
-	}
-	if port[0] != ':' {
-		return false
-	}
-	for _, b := range port[1:] {
-		if b < '0' || b > '9' {
-			return false
-		}
-	}
 	return true
 }
 
