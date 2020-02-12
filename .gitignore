@@ -15,6 +15,7 @@ d4-arm5l
 d4-amd64l
 # Output binaries from gox
 d4-goclient_*
+d4-goclient
 
 # Configuration files
 /conf.*
