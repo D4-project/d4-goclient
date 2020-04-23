@@ -66,6 +66,7 @@ type (
 		ct             time.Duration
 		ce             bool
 		retry          time.Duration
+		rate          time.Duration
 		cc             bool
 		ca             x509.CertPool
 		d4error        uint8
@@ -104,13 +105,15 @@ var (
 	tmpct, _    = time.ParseDuration("5mn")
 	tmpcka, _   = time.ParseDuration("30s")
 	tmpretry, _ = time.ParseDuration("30s")
+	tmprate, _ = time.ParseDuration("200ms")
 
 	confdir = flag.String("c", "", "configuration directory")
 	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout")
 	ce      = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
-	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
+	retry   = flag.Duration("rt", tmpretry, "Rime in human format before retry after connection failure, set to 0 to exit on failure")
+	rate   = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
 )
 
@@ -156,10 +159,14 @@ func main() {
 	d4.cc = *cc
 	d4.cka = *cka
 	d4.retry = *retry
+	d4.rate = *rate
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, os.Interrupt, os.Kill)
 	c := make(chan string)
+
+	// Launching the Rate limiter
+    ratelimiter := time.Tick(d4.rate)
 
 	d4.mhb = bytes.NewBuffer(d4.mh)
 
@@ -180,6 +187,9 @@ func main() {
 			}
 			// copy routine
 			go d4Copy(d4p, c)
+			log.Printf("---d4Copy")
+			// Block until the rate limiter allow us to continue
+			<-ratelimiter
 		} else if d4.retry > 0 {
 			go func() {
 				infof(fmt.Sprintf("Sleeping for %.f seconds before retry...\n", d4.retry.Seconds()))
@@ -195,7 +205,7 @@ func main() {
 		select {
 		case str := <-c:
 			infof(str)
-			// log.Printf("Channel c: %q\n", str)
+			//log.Printf("Channel c: %q\n", str)
 			continue
 		case <-s:
 			fmt.Println(" Exiting")
