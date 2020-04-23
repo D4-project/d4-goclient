@@ -95,11 +95,12 @@ type (
 )
 
 var (
-	// verbose
+	// Verbose mode and logging
 	buf    bytes.Buffer
 	logger = log.New(&buf, "INFO: ", log.Lshortfile)
-	infof  = func(info string) {
-		logger.Output(2, info)
+	debugger = log.New(&buf, "DEBUG: ", log.Lmicroseconds)
+	debugf  = func(debug string) {
+		debugger.Println("", debug)
 	}
 
 	tmpct, _    = time.ParseDuration("5mn")
@@ -108,7 +109,7 @@ var (
 	tmprate, _ = time.ParseDuration("200ms")
 
 	confdir = flag.String("c", "", "configuration directory")
-	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout")
+	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
 	ce      = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
@@ -121,6 +122,15 @@ func main() {
 
 	var d4 d4S
 	d4p := &d4
+
+	// Setting up log file
+	f, err := os.OpenFile("d4-goclient.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	logger.SetOutput(f)
+	logger.Println("Init")
 
 	flag.Usage = func() {
 		fmt.Printf("d4 - d4 client\n")
@@ -182,18 +192,16 @@ func main() {
 				if err != nil {
 					panic(fmt.Sprintf("Cannot initiate session %s", err))
 				}
-				infof(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
+				logger.Println(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
 				d4p.dst.restoreHeader()
 			}
 			// copy routine
 			go d4Copy(d4p, c)
-			log.Printf("---d4Copy")
 			// Block until the rate limiter allow us to continue
 			<-ratelimiter
 		} else if d4.retry > 0 {
 			go func() {
-				infof(fmt.Sprintf("Sleeping for %.f seconds before retry...\n", d4.retry.Seconds()))
-				fmt.Printf("Sleeping for %.f seconds before retry...\n", d4.retry.Seconds())
+				logger.Println(fmt.Sprintf("Sleeping for %.f seconds before retry...", d4.retry.Seconds()))
 				time.Sleep(d4.retry)
 				c <- "done waiting"
 			}()
@@ -203,19 +211,17 @@ func main() {
 
 		// Block until we catch an event
 		select {
-		case str := <-c:
-			infof(str)
-			//log.Printf("Channel c: %q\n", str)
+		case <-c:
 			continue
 		case <-s:
-			fmt.Println(" Exiting")
+			logger.Println("Exiting")
 			exit(d4p, 0)
 		}
 	}
 }
 
 func exit(d4 *d4S, exitcode int) {
-	// Output logging before closing if debug is enabled
+	// Output debug info in the log before closing if debug is enabled
 	if *debug == true {
 		(*d4).debug = true
 		fmt.Print(&buf)
@@ -333,7 +339,7 @@ func d4loadConfig(d4 *d4S) bool {
 							panic(fmt.Sprintf("Cannot read Meta-Header file: %s", err))
 						} else {
 							if err := json.Compact((*d4).mhb, data[:count]); err != nil {
-								infof("Failed to compact meta header file")
+								logger.Println("Failed to compact meta header file")
 							}
 						}
 					} else {
@@ -395,7 +401,7 @@ func setReaderWriters(d4 *d4S) bool {
 		var err error
 		(*d4).redisCon, err = (*d4).redisInputPool.Dial()
 		if err != nil {
-			log.Println("Could not connect to d4 Redis")
+			logger.Println("Could not connect to d4 Redis")
 			return false
 		}
 		(*d4).src, err = inputreader.NewLPOPReader(&(*d4).redisCon, (*d4).conf.redisDB, (*d4).conf.redisQueue, int(time.Second*(*d4).retry))
@@ -423,7 +429,7 @@ func setReaderWriters(d4 *d4S) bool {
 		if (*d4).ce == true {
 			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
 			if errc != nil {
-				fmt.Println(errc)
+				logger.Println(errc)
 				return false
 			}
 			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
@@ -458,7 +464,7 @@ func generateUUIDv4() []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	infof(fmt.Sprintf("UUIDv4: %s\n", uuid))
+	logger.Println(fmt.Sprintf("UUIDv4: %s\n", uuid))
 	return uuid.Bytes()
 }
 
@@ -513,8 +519,8 @@ func (d4w *d4Writer) initHeader(d4 *d4S) bool {
 	// hmac is set to zero during hmac operations, so leave it alone
 	// init size of payload at 0
 	binary.LittleEndian.PutUint32(d4w.fb[58:62], uint32(0))
-	infof(fmt.Sprintf("Initialized a %d bytes header:\n", HDR_SIZE))
-	infof(fmt.Sprintf("%b\n", d4w.fb[:HDR_SIZE]))
+	debugf(fmt.Sprintf("Initialized a %d bytes header:\n", HDR_SIZE))
+	debugf(fmt.Sprintf("%b\n", d4w.fb[:HDR_SIZE]))
 	return true
 }
 
