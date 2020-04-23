@@ -206,7 +206,7 @@ func main() {
 				c <- "done waiting"
 			}()
 		} else {
-			panic("Unrecoverable error without retry.")
+			exit(d4p, 1)
 		}
 
 		// Block until we catch an event
