@@ -151,6 +151,8 @@ func main() {
 		fmt.Printf("type        - the type of data that is send. pcap, netflow, ...\n")
 		fmt.Printf("source      - the source where the data is read from\n")
 		fmt.Printf("destination - the destination where the data is written to\n")
+		fmt.Printf("redis_d4    - location of redis d4 server\n")
+		fmt.Printf("redis_queue - analyzer:type:queueuuid to pop\n")
 		fmt.Printf("\n")
 		flag.PrintDefaults()
 	}
