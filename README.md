@@ -47,7 +47,7 @@ Part of the client configuration can be stored in folder containing the followin
  - metaheader.json: optional : a json file describing feed's meta-type [types](https://github.com/D4-project/architecture/tree/master/format)
  
 If source is set to d4server, then one also 2 additional files:
- - redis_queue: redis queue in the form analyzer:typeofqueue:queueuuid, for instance analyzer:3:d42967c1-f7ad-464e-bbc7-4464c653d7a6
+ - redis_queue: redis queue in the form analyzer:typeofqueue:queueuuid, for instance `analyzer:3:d42967c1-f7ad-464e-bbc7-4464c653d7a6`
  - redis_d4: redis server location:port/database, for instance localhost:6385/2
 
 ## Flags
