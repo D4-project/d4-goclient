@@ -113,7 +113,7 @@ var (
 	ce      = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
-	retry   = flag.Duration("rt", tmpretry, "Rime in human format before retry after connection failure, set to 0 to exit on failure")
+	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
 	rate   = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
 )
