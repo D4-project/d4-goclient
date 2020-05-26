@@ -200,7 +200,13 @@ func main() {
 			// copy routine
 			go d4Copy(d4p, c)
 			// Block until the rate limiter allow us to continue
-			<-ratelimiter
+			select {
+			case <-ratelimiter:
+				continue
+			case <-s:
+				logger.Println("Exiting")
+				exit(d4p, 0)
+			}
 		} else if d4.retry > 0 {
 			go func() {
 				logger.Println(fmt.Sprintf("Sleeping for %.f seconds before retry...", d4.retry.Seconds()))
