@@ -266,7 +266,7 @@ func d4loadConfig(d4 *d4S) bool {
 	}
 	if (*d4).conf.source == "d4server" {
 		// Parse Input Redis Config
-		tmp := config.ReadConfigFile(*confdir, "redis_d4")
+		tmp := string(readConfFile(d4, "redis_d4"))
 		ss := strings.Split(string(tmp), "/")
 		if len(ss) <= 1 {
 			log.Fatal("Missing Database in Redis input config: should be host:port/database_name")
@@ -414,33 +414,40 @@ func setReaderWriters(d4 *d4S) bool {
 	}
 	isn, dstnet := config.IsNet((*d4).conf.destination)
 	if isn {
-		dial := net.Dialer{
-			Timeout:       (*d4).ct,
-			KeepAlive:     (*d4).cka,
-			FallbackDelay: 0,
-		}
-		tlsc := tls.Config{
-			InsecureSkipVerify: true,
-		}
-		if (*d4).cc {
-			tlsc = tls.Config{
-				InsecureSkipVerify: false,
-				RootCAs:            &(*d4).ca,
+		// First, we test whether a usable connection already exist
+		// (case where the reader run out of data)
+		switch (*d4).dst.w.(type){
+		case net.Conn:
+			logger.Println("Reusing previous tcp connection.")
+		default:
+			dial := net.Dialer{
+				Timeout:       (*d4).ct,
+				KeepAlive:     (*d4).cka,
+				FallbackDelay: 0,
 			}
-		}
-		if (*d4).ce == true {
-			conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
-			if errc != nil {
-				logger.Println(errc)
-				return false
+			tlsc := tls.Config{
+				InsecureSkipVerify: true,
 			}
-			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
-		} else {
-			conn, errc := dial.Dial("tcp", dstnet)
-			if errc != nil {
-				return false
+			if (*d4).cc {
+				tlsc = tls.Config{
+					InsecureSkipVerify: false,
+					RootCAs:            &(*d4).ca,
+				}
 			}
-			(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			if (*d4).ce == true {
+				conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
+				if errc != nil {
+					logger.Println(errc)
+					return false
+				}
+				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			} else {
+				conn, errc := dial.Dial("tcp", dstnet)
+				if errc != nil {
+					return false
+				}
+				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			}
 		}
 	} else {
 		switch (*d4).conf.destination {
@@ -466,7 +473,7 @@ func generateUUIDv4() []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logger.Println(fmt.Sprintf("UUIDv4: %s\n", uuid))
+	logger.Println(fmt.Sprintf("UUIDv4: %s", uuid))
 	return uuid.Bytes()
 }
 
