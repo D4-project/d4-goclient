@@ -424,7 +424,7 @@ func setReaderWriters(d4 *d4S) bool {
 		// (case where the reader run out of data)
 		switch (*d4).dst.w.(type){
 		case net.Conn:
-			logger.Println("Reusing previous tcp connection.")
+			// in this case, it's already set up.
 		default:
 			dial := net.Dialer{
 				Timeout:       (*d4).ct,
