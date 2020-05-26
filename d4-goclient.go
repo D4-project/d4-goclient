@@ -420,12 +420,43 @@ func setReaderWriters(d4 *d4S) bool {
 	}
 	isn, dstnet := config.IsNet((*d4).conf.destination)
 	if isn {
-		// First, we test whether a usable connection already exist
+		// We test whether a usable connection already exist
 		// (case where the reader run out of data)
-		switch (*d4).dst.w.(type){
-		case net.Conn:
-			// in this case, it's already set up.
-		default:
+		if _, ok := (*d4).dst.w.(net.Conn); !ok {
+			// We need a connection
+			dial := net.Dialer{
+				Timeout:       (*d4).ct,
+				KeepAlive:     (*d4).cka,
+				FallbackDelay: 0,
+			}
+			tlsc := tls.Config{
+				InsecureSkipVerify: true,
+			}
+			if (*d4).cc {
+				tlsc = tls.Config{
+					InsecureSkipVerify: false,
+					RootCAs:            &(*d4).ca,
+				}
+			}
+			if (*d4).ce == true {
+				conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
+				if errc != nil {
+					logger.Println(errc)
+					return false
+				}
+				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			} else {
+				conn, errc := dial.Dial("tcp", dstnet)
+				if errc != nil {
+					return false
+				}
+				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			}
+		}else{
+			// The connection can be reused, there is nothing to do
+			// Except for type 2 - we tear down the old connection,
+			(*d4).dst.w.(net.Conn).Close()
+			// and bring up a new one.
 			dial := net.Dialer{
 				Timeout:       (*d4).ct,
 				KeepAlive:     (*d4).cka,
