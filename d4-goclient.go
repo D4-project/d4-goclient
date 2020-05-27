@@ -412,7 +412,7 @@ func setReaderWriters(d4 *d4S) bool {
 			logger.Println("Could not connect to d4 Redis")
 			return false
 		}
-		(*d4).src, err = inputreader.NewLPOPReader(&(*d4).redisCon, (*d4).conf.redisDB, (*d4).conf.redisQueue, int(time.Second*(*d4).retry))
+		(*d4).src, err = inputreader.NewLPOPReader(&(*d4).redisCon, (*d4).conf.redisDB, (*d4).conf.redisQueue)
 		if err != nil {
 			log.Printf("Could not create d4 Redis Descriptor %q \n", err)
 			return false
