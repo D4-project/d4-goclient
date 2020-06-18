@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	config "github.com/D4-project/d4-golang-utils/config"
@@ -66,7 +67,7 @@ type (
 		ct             time.Duration
 		ce             bool
 		retry          time.Duration
-		rate          time.Duration
+		rate           time.Duration
 		cc             bool
 		ca             x509.CertPool
 		d4error        uint8
@@ -96,17 +97,17 @@ type (
 
 var (
 	// Verbose mode and logging
-	buf    bytes.Buffer
-	logger = log.New(&buf, "INFO: ", log.Lshortfile)
+	buf      bytes.Buffer
+	logger   = log.New(&buf, "INFO: ", log.Lshortfile)
 	debugger = log.New(&buf, "DEBUG: ", log.Lmicroseconds)
-	debugf  = func(debug string) {
+	debugf   = func(debug string) {
 		debugger.Println("", debug)
 	}
 
 	tmpct, _    = time.ParseDuration("5mn")
 	tmpcka, _   = time.ParseDuration("30s")
 	tmpretry, _ = time.ParseDuration("30s")
-	tmprate, _ = time.ParseDuration("200ms")
+	tmprate, _  = time.ParseDuration("200ms")
 
 	confdir = flag.String("c", "", "configuration directory")
 	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
@@ -114,7 +115,7 @@ var (
 	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
 	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
 	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
-	rate   = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
+	rate    = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
 )
 
@@ -130,6 +131,7 @@ func main() {
 	}
 	defer f.Close()
 	logger.SetOutput(f)
+	logger.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Println("Init")
 
 	flag.Usage = func() {
@@ -165,6 +167,7 @@ func main() {
 		*confdir = strings.TrimSuffix(*confdir, "/")
 		*confdir = strings.TrimSuffix(*confdir, "\\")
 	}
+
 	d4.confdir = *confdir
 	d4.ce = *ce
 	d4.ct = *ct
@@ -175,52 +178,121 @@ func main() {
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, os.Interrupt, os.Kill)
-	c := make(chan string)
+	errchan := make(chan error)
+	eofchan := make(chan string)
+	metachan := make(chan string)
 
-	// Launching the Rate limiter
-    ratelimiter := time.Tick(d4.rate)
+	// Launching the Rate limiters
+	rateLimiter := time.Tick(d4.rate)
+	retryLimiter := time.Tick(d4.retry)
 
-	d4.mhb = bytes.NewBuffer(d4.mh)
+	//Setup
+	if !d4loadConfig(d4p) {
+		panic("Could not load Config.")
+	}
+	if !setReaderWriters(d4p, false) {
+		panic("Could not Init Inputs Outputs.")
+	}
+	if !d4.dst.initHeader(d4p) {
+		panic("Could not Init Headers.")
+	}
 
-	for {
-		// init or reinit after retry
-		if set(d4p) {
-			// type 254 requires to send a meta-header first
-			if d4.conf.ttype == 254 || d4.conf.ttype == 2 {
-				// create a jsonreader
-				d4p.dst.hijackHeader()
-				// Ugly hack to skip bytes.Buffer WriteTo check that bypasses my fixed lenght buffer
-				nread, err := io.CopyBuffer(&d4.dst, struct{ io.Reader }{d4.mhb}, d4.dst.pb)
-				if err != nil {
-					panic(fmt.Sprintf("Cannot initiate session %s", err))
-				}
-				logger.Println(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
-				d4p.dst.restoreHeader()
-			}
-			// copy routine
-			go d4Copy(d4p, c)
-			// Block until the rate limiter allow us to continue
+	// force is a flag that forces the creation of a new connection
+	force := false
+
+	// On the first run, we send d4 meta header for type 2/254
+	if d4.conf.ttype == 254 || d4.conf.ttype == 2 {
+		go sendMeta(d4p, errchan, metachan)
+	H:
+		for {
 			select {
-			case <-ratelimiter:
-				continue
-			case <-s:
-				logger.Println("Exiting")
-				exit(d4p, 0)
+			case <-errchan:
+				select {
+				case <-retryLimiter:
+					go sendMeta(d4p, errchan, metachan)
+				case <-s:
+					logger.Println("Exiting")
+					exit(d4p, 0)
+				}
+			case <-metachan:
+				break H
 			}
-		} else if d4.retry > 0 {
-			go func() {
-				logger.Println(fmt.Sprintf("Sleeping for %.f seconds before retry...", d4.retry.Seconds()))
-				time.Sleep(d4.retry)
-				c <- "done waiting"
-			}()
-		} else {
-			exit(d4p, 1)
 		}
+	}
 
-		// Block until we catch an event
+	// Launch copy routine
+	go d4Copy(d4p, errchan, eofchan)
+
+	// Handle signals
+	for {
 		select {
-		case <-c:
-			continue
+		// Case where the input ran out of data to consume1
+		case <-eofchan:
+			// We wait for ratelimiter before polling again
+		EOF:
+			for {
+				select {
+				case <-rateLimiter:
+					// copy routine
+					go d4Copy(d4p, errchan, eofchan)
+					break EOF
+					// Exit signal
+				case <-s:
+					logger.Println("Exiting")
+					exit(d4p, 0)
+				}
+			}
+		// ERROR, we check first whether it is network related
+		case err := <-errchan:
+			// On connection errors, we force setReaderWriter to reset the connection
+			force = false
+			switch t := err.(type) {
+			case *net.OpError:
+				force = true
+				if t.Op == "dial" {
+					logger.Println("Unknown Host")
+				} else if t.Op == "read" {
+					logger.Println("Connection Refused")
+				} else if t.Op == "write" {
+					logger.Println("Write error")
+				}
+			case syscall.Errno:
+				if t == syscall.ECONNREFUSED {
+					force = true
+					logger.Println("Connection Refused")
+				}
+			}
+			// We wait for retryLimiter before writing again
+		RETRY:
+			for {
+				select {
+				case <-retryLimiter:
+					if !setReaderWriters(d4p, force) {
+						// Can't connect, we break to retry
+						// force is still true
+						break
+					}
+					if !d4.dst.initHeader(d4p) {
+						panic("Could not Init Headers.")
+					}
+					if (d4.conf.ttype == 254 || d4.conf.ttype == 2) && force {
+						// setReaderWriter is happy, we should have a working
+						// connection from now on.
+						force = false
+						// Sending meta header for the first time on this new connection
+						go sendMeta(d4p, errchan, metachan)
+					}
+					break RETRY
+					// Exit signal
+				case <-s:
+					logger.Println("Exiting")
+					exit(d4p, 0)
+				}
+			}
+		// metaheader sent, launch the copy routine
+		case <-metachan:
+			go d4Copy(d4p, errchan, eofchan)
+		// Exit signal
 		case <-s:
 			logger.Println("Exiting")
 			exit(d4p, 0)
@@ -237,25 +309,31 @@ func exit(d4 *d4S, exitcode int) {
 	os.Exit(exitcode)
 }
 
-func set(d4 *d4S) bool {
-	if d4loadConfig(d4) {
-		if setReaderWriters(d4) {
-			if d4.dst.initHeader(d4) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func d4Copy(d4 *d4S, c chan string) {
+func d4Copy(d4 *d4S, errchan chan error, eofchan chan string) {
 	nread, err := io.CopyBuffer(&d4.dst, d4.src, d4.dst.pb)
 	// Always retry
 	if err != nil {
-		c <- fmt.Sprintf("D4copy: %s", err)
+		logger.Printf("D4copy: %s", err)
+		errchan <- err
 		return
 	}
-	c <- fmt.Sprintf("EOF: Nread: %d", nread)
+	eofchan <- fmt.Sprintf("EOF: Nread: %d", nread)
+}
+
+func sendMeta(d4 *d4S, errchan chan error, metachan chan string) {
+	// Fill metaheader buffer with metaheader data
+	d4.mhb = bytes.NewBuffer(d4.mh)
+	d4.dst.hijackHeader()
+	// Ugly hack to skip bytes.Buffer WriteTo check that bypasses my fixed lenght buffer
+	nread, err := io.CopyBuffer(&d4.dst, struct{ io.Reader }{d4.mhb}, d4.dst.pb)
+	if err != nil {
+		logger.Printf("Cannot sent meta-header: %s", err)
+		errchan <- err
+		return
+	}
+	logger.Println(fmt.Sprintf("Meta-Header sent: %d bytes", nread))
+	d4.dst.restoreHeader()
+	metachan <- "Header Sent"
 	return
 }
 
@@ -346,9 +424,13 @@ func d4loadConfig(d4 *d4S) bool {
 						if off, err := file.Seek(0, 0); err != nil || off != 0 {
 							panic(fmt.Sprintf("Cannot read Meta-Header file: %s", err))
 						} else {
+							// create metaheader buffer
+							d4.mhb = bytes.NewBuffer(d4.mh)
 							if err := json.Compact((*d4).mhb, data[:count]); err != nil {
 								logger.Println("Failed to compact meta header file")
 							}
+							// Store the metaheader in d4 struct for subsequent retries
+							(*d4).mh = data[:count]
 						}
 					} else {
 						panic("A Meta-Header File should at least contain a 'type' field.")
@@ -395,7 +477,7 @@ func newD4Writer(writer io.Writer, key []byte) d4Writer {
 }
 
 // TODO QUICK IMPLEM, REVISE
-func setReaderWriters(d4 *d4S) bool {
+func setReaderWriters(d4 *d4S, force bool) bool {
 	//TODO implement other destination file, fifo unix_socket ...
 	switch (*d4).conf.source {
 	case "stdin":
@@ -420,43 +502,13 @@ func setReaderWriters(d4 *d4S) bool {
 	}
 	isn, dstnet := config.IsNet((*d4).conf.destination)
 	if isn {
-		// We test whether a usable connection already exist
+		// We test whether a connection already exist
 		// (case where the reader run out of data)
-		if _, ok := (*d4).dst.w.(net.Conn); !ok {
+		// force forces to reset the connections after
+		// failure to reuse it
+		if _, ok := (*d4).dst.w.(net.Conn); !ok || force {
+			//fmt.Println("Creating a new connection")
 			// We need a connection
-			dial := net.Dialer{
-				Timeout:       (*d4).ct,
-				KeepAlive:     (*d4).cka,
-				FallbackDelay: 0,
-			}
-			tlsc := tls.Config{
-				InsecureSkipVerify: true,
-			}
-			if (*d4).cc {
-				tlsc = tls.Config{
-					InsecureSkipVerify: false,
-					RootCAs:            &(*d4).ca,
-				}
-			}
-			if (*d4).ce == true {
-				conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
-				if errc != nil {
-					logger.Println(errc)
-					return false
-				}
-				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
-			} else {
-				conn, errc := dial.Dial("tcp", dstnet)
-				if errc != nil {
-					return false
-				}
-				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
-			}
-		}else{
-			// The connection can be reused, there is nothing to do
-			// Except for type 2 - we tear down the old connection,
-			(*d4).dst.w.(net.Conn).Close()
-			// and bring up a new one.
 			dial := net.Dialer{
 				Timeout:       (*d4).ct,
 				KeepAlive:     (*d4).cka,
