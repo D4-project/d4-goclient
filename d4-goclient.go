@@ -24,7 +24,6 @@ import (
 	config "github.com/D4-project/d4-golang-utils/config"
 	uuid "github.com/D4-project/d4-golang-utils/crypto/hash"
 	"github.com/D4-project/d4-golang-utils/inputreader"
-	_ "github.com/D4-project/d4-golang-utils/inputreader"
 	"github.com/gomodule/redigo/redis"
 )
 
