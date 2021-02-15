@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/rjeczalik/notify"
 	"io"
 	"io/ioutil"
 	"log"
@@ -77,6 +78,7 @@ type (
 		mh             []byte
 		redisInputPool *redis.Pool
 		redisCon       redis.Conn
+		folderfd       os.File
 	}
 
 	d4params struct {
@@ -91,6 +93,7 @@ type (
 		redisPort   string
 		redisQueue  string
 		redisDB     int
+		folderstr	string
 	}
 )
 
@@ -347,6 +350,17 @@ func d4loadConfig(d4 *d4S) bool {
 	if len((*d4).conf.source) < 1 {
 		log.Fatal("Unsupported source")
 	}
+	if (*d4).conf.source == "folder"{
+		fstr := string(readConfFile(d4, "folder"))
+		if ffd , err := os.Stat(fstr); os.IsNotExist(err) {
+			log.Fatal("Folder does not exist")
+		}else{
+			if !ffd.IsDir(){
+				log.Fatal("Folder is not a directory")
+			}
+		}
+		(*d4).conf.folderstr = fstr
+	}
 	if (*d4).conf.source == "d4server" {
 		// Parse Input Redis Config
 		tmp := string(readConfFile(d4, "redis_d4"))
@@ -494,6 +508,13 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 			return false
 		}
 		(*d4).src, err = inputreader.NewLPOPReader(&(*d4).redisCon, (*d4).conf.redisDB, (*d4).conf.redisQueue)
+		if err != nil {
+			log.Printf("Could not create d4 Redis Descriptor %q \n", err)
+			return false
+		}
+	case "folder":
+		// Create a notification channel to recursively watch file event on folder
+		(*d4).src, err = inputreader.NewRecursiveWatcherReader(&(*d4).folderfd)
 		if err != nil {
 			log.Printf("Could not create d4 Redis Descriptor %q \n", err)
 			return false
