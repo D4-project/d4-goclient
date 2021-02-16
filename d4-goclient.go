@@ -68,6 +68,7 @@ type (
 		retry          time.Duration
 		rate           time.Duration
 		cc             bool
+		json			bool
 		ca             x509.CertPool
 		d4error        uint8
 		errnoCopy      uint8
@@ -118,6 +119,7 @@ var (
 	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
 	rate    = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
+	jsonflag      = flag.Bool("json", false, "The files watched are json files")
 )
 
 func main() {
@@ -173,6 +175,7 @@ func main() {
 	d4.ce = *ce
 	d4.ct = *ct
 	d4.cc = *cc
+	d4.json = *jsonflag
 	d4.cka = *cka
 	d4.retry = *retry
 	d4.rate = *rate
@@ -513,8 +516,7 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 		}
 	case "folder":
 		var err error
-		// Create a notification channel to recursively watch file event on folder
-		(*d4).src, err = inputreader.NewFileWatcherReader(&(*d4).folderfd)
+		(*d4).src, err = inputreader.NewFileWatcherReader(&(*d4).folderfd, d4.json)
 		if err != nil {
 			log.Printf("Could not create File Watcher %q \n", err)
 			return false
