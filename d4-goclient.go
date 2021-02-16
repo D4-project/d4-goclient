@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/rjeczalik/notify"
 	"io"
 	"io/ioutil"
 	"log"
@@ -513,10 +512,11 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 			return false
 		}
 	case "folder":
+		var err error
 		// Create a notification channel to recursively watch file event on folder
-		(*d4).src, err = inputreader.NewRecursiveWatcherReader(&(*d4).folderfd)
+		(*d4).src, err = inputreader.NewFileWatcherReader(&(*d4).folderfd)
 		if err != nil {
-			log.Printf("Could not create d4 Redis Descriptor %q \n", err)
+			log.Printf("Could not create File Watcher %q \n", err)
 			return false
 		}
 	}
