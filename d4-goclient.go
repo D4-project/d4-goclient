@@ -68,7 +68,7 @@ type (
 		retry          time.Duration
 		rate           time.Duration
 		cc             bool
-		json			bool
+		json           bool
 		ca             x509.CertPool
 		d4error        uint8
 		errnoCopy      uint8
@@ -93,7 +93,7 @@ type (
 		redisPort   string
 		redisQueue  string
 		redisDB     int
-		folderstr	string
+		folderstr   string
 	}
 )
 
@@ -111,15 +111,15 @@ var (
 	tmpretry, _ = time.ParseDuration("30s")
 	tmprate, _  = time.ParseDuration("200ms")
 
-	confdir = flag.String("c", "", "configuration directory")
-	debug   = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
-	ce      = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
-	ct      = flag.Duration("ct", tmpct, "Set timeout in human format")
-	cka     = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
-	retry   = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
-	rate    = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
-	cc      = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
-	jsonflag      = flag.Bool("json", false, "The files watched are json files")
+	confdir  = flag.String("c", "", "configuration directory")
+	debug    = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
+	ce       = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
+	ct       = flag.Duration("ct", tmpct, "Set timeout in human format")
+	cka      = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
+	retry    = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
+	rate     = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
+	cc       = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
+	jsonflag = flag.Bool("json", false, "The files watched are json files")
 )
 
 func main() {
@@ -352,12 +352,12 @@ func d4loadConfig(d4 *d4S) bool {
 	if len((*d4).conf.source) < 1 {
 		log.Fatal("Unsupported source")
 	}
-	if (*d4).conf.source == "folder"{
+	if (*d4).conf.source == "folder" {
 		fstr := string(readConfFile(d4, "folder"))
-		if ffd , err := os.Stat(fstr); os.IsNotExist(err) {
+		if ffd, err := os.Stat(fstr); os.IsNotExist(err) {
 			log.Fatal("Folder does not exist")
-		}else{
-			if !ffd.IsDir(){
+		} else {
+			if !ffd.IsDir() {
 				log.Fatal("Folder is not a directory")
 			}
 		}
