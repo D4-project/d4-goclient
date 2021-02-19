@@ -80,7 +80,6 @@ type (
 		mh             []byte
 		redisInputPool *redis.Pool
 		redisCon       redis.Conn
-		folderfd       os.File
 	}
 
 	d4params struct {
@@ -520,7 +519,7 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 		}
 	case "folder":
 		var err error
-		(*d4).src, err = inputreader.NewFileWatcherReader(&(*d4).folderfd, d4.json)
+		(*d4).src, err = inputreader.NewFileWatcherReader((*d4).conf.folderstr, (*d4).json)
 		if err != nil {
 			log.Printf("Could not create File Watcher %q \n", err)
 			return false
