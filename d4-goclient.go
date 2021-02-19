@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"log"
@@ -68,6 +69,7 @@ type (
 		retry          time.Duration
 		rate           time.Duration
 		cc             bool
+		tor            bool
 		json           bool
 		ca             x509.CertPool
 		d4error        uint8
@@ -119,6 +121,7 @@ var (
 	retry    = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
 	rate     = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc       = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
+	torflag  = flag.Bool("tor", false, "Use a SOCKS5 tor proxy on 9050")
 	jsonflag = flag.Bool("json", false, "The files watched are json files")
 )
 
@@ -179,6 +182,7 @@ func main() {
 	d4.cka = *cka
 	d4.retry = *retry
 	d4.rate = *rate
+	d4.tor = *torflag
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, os.Interrupt, os.Kill)
@@ -529,35 +533,63 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 		// force forces to reset the connections after
 		// failure to reuse it
 		if _, ok := (*d4).dst.w.(net.Conn); !ok || force {
-			//fmt.Println("Creating a new connection")
-			// We need a connection
-			dial := net.Dialer{
-				Timeout:       (*d4).ct,
-				KeepAlive:     (*d4).cka,
-				FallbackDelay: 0,
-			}
-			tlsc := tls.Config{
-				InsecureSkipVerify: true,
-			}
-			if (*d4).cc {
-				tlsc = tls.Config{
-					InsecureSkipVerify: false,
-					RootCAs:            &(*d4).ca,
+			if (*d4).tor {
+				dialer := net.Dialer{
+					Timeout:       (*d4).ct,
+					KeepAlive:     (*d4).cka,
+					FallbackDelay: 0,
 				}
-			}
-			if (*d4).ce == true {
-				conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
+				dial, err := proxy.SOCKS5("tcp", "127.0.0.1:9050", nil, &dialer)
+				if err != nil {
+					log.Fatal(err)
+				}
+				tlsc := tls.Config{
+					InsecureSkipVerify: true,
+				}
+				if (*d4).cc {
+					tlsc = tls.Config{
+						InsecureSkipVerify: false,
+						RootCAs:            &(*d4).ca,
+					}
+				}
+				conn, errc := dial.Dial("tcp", dstnet)
 				if errc != nil {
 					logger.Println(errc)
 					return false
 				}
-				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
-			} else {
-				conn, errc := dial.Dial("tcp", dstnet)
-				if errc != nil {
-					return false
+				if (*d4).ce == true {
+					conn = tls.Client(conn, &tlsc) // use tls
 				}
 				(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+			} else {
+				dial := net.Dialer{
+					Timeout:       (*d4).ct,
+					KeepAlive:     (*d4).cka,
+					FallbackDelay: 0,
+				}
+				tlsc := tls.Config{
+					InsecureSkipVerify: true,
+				}
+				if (*d4).cc {
+					tlsc = tls.Config{
+						InsecureSkipVerify: false,
+						RootCAs:            &(*d4).ca,
+					}
+				}
+				if (*d4).ce == true {
+					conn, errc := tls.DialWithDialer(&dial, "tcp", dstnet, &tlsc)
+					if errc != nil {
+						logger.Println(errc)
+						return false
+					}
+					(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+				} else {
+					conn, errc := dial.Dial("tcp", dstnet)
+					if errc != nil {
+						return false
+					}
+					(*d4).dst = newD4Writer(conn, (*d4).conf.key)
+				}
 			}
 		}
 	} else {
