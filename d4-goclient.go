@@ -70,6 +70,7 @@ type (
 		rate           time.Duration
 		cc             bool
 		tor            bool
+		daily            bool
 		json           bool
 		ca             x509.CertPool
 		d4error        uint8
@@ -121,6 +122,7 @@ var (
 	rate     = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
 	cc       = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
 	torflag  = flag.Bool("tor", false, "Use a SOCKS5 tor proxy on 9050")
+	dailyflag  = flag.Bool("daily", false, "Sets up filewatcher to watch a new %Y%M%D folder at midnight")
 	jsonflag = flag.Bool("json", false, "The files watched are json files")
 )
 
@@ -182,6 +184,7 @@ func main() {
 	d4.retry = *retry
 	d4.rate = *rate
 	d4.tor = *torflag
+	d4.daily = *dailyflag
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, os.Interrupt, os.Kill)
@@ -519,7 +522,7 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 		}
 	case "folder":
 		var err error
-		(*d4).src, err = inputreader.NewFileWatcherReader((*d4).conf.folderstr, (*d4).json)
+		(*d4).src, err = inputreader.NewFileWatcherReader((*d4).conf.folderstr, (*d4).json, (*d4).daily)
 		if err != nil {
 			log.Printf("Could not create File Watcher %q \n", err)
 			return false
