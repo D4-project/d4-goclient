@@ -70,7 +70,7 @@ type (
 		rate           time.Duration
 		cc             bool
 		tor            bool
-		daily            bool
+		daily          bool
 		json           bool
 		ca             x509.CertPool
 		d4error        uint8
@@ -113,17 +113,17 @@ var (
 	tmpretry, _ = time.ParseDuration("30s")
 	tmprate, _  = time.ParseDuration("200ms")
 
-	confdir  = flag.String("c", "", "configuration directory")
-	debug    = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
-	ce       = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
-	ct       = flag.Duration("ct", tmpct, "Set timeout in human format")
-	cka      = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
-	retry    = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
-	rate     = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
-	cc       = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
-	torflag  = flag.Bool("tor", false, "Use a SOCKS5 tor proxy on 9050")
-	dailyflag  = flag.Bool("daily", false, "Sets up filewatcher to watch a new %Y%M%D folder at midnight")
-	jsonflag = flag.Bool("json", false, "The files watched are json files")
+	confdir   = flag.String("c", "", "configuration directory")
+	debug     = flag.Bool("v", false, "Set to True, true, TRUE, 1, or t to enable verbose output on stdout - Don't use in production")
+	ce        = flag.Bool("ce", true, "Set to True, true, TRUE, 1, or t to enable TLS on network destination")
+	ct        = flag.Duration("ct", tmpct, "Set timeout in human format")
+	cka       = flag.Duration("cka", tmpcka, "Keep Alive time human format, 0 to disable")
+	retry     = flag.Duration("rt", tmpretry, "Time in human format before retry after connection failure, set to 0 to exit on failure")
+	rate      = flag.Duration("rl", tmprate, "Rate limiter: time in human format before retry after EOF")
+	cc        = flag.Bool("cc", false, "Check TLS certificate against rootCA.crt")
+	torflag   = flag.Bool("tor", false, "Use a SOCKS5 tor proxy on 9050")
+	dailyflag = flag.Bool("daily", false, "Sets up filewatcher to watch a new %Y%M%D folder at midnight")
+	jsonflag  = flag.Bool("json", false, "The files watched are json files")
 )
 
 func main() {
@@ -522,7 +522,7 @@ func setReaderWriters(d4 *d4S, force bool) bool {
 		}
 	case "folder":
 		var err error
-		(*d4).src, err = inputreader.NewFileWatcherReader((*d4).conf.folderstr, (*d4).json, (*d4).daily)
+		(*d4).src, err = inputreader.NewFileWatcherReader((*d4).conf.folderstr, (*d4).json, (*d4).daily, logger)
 		if err != nil {
 			log.Printf("Could not create File Watcher %q \n", err)
 			return false

@@ -1,5 +1,7 @@
 github.com/D4-project/d4-golang-utils v0.1.13 h1:pqa72t2HrbL3QZUGnK0o8wtWOuslkkz8F5E0BzKjwio=
 github.com/D4-project/d4-golang-utils v0.1.13/go.mod h1:qXVZ3kCL72i3uYe29t7aEy9dU0bNqtFvcoNE1dJu0zo=
+github.com/D4-project/d4-golang-utils v0.1.14 h1:APwN+i4qyDrxT8gvlbeV/VXfNas2GvPWOnkTGX1K2Lo=
+github.com/D4-project/d4-golang-utils v0.1.14/go.mod h1:qXVZ3kCL72i3uYe29t7aEy9dU0bNqtFvcoNE1dJu0zo=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
 github.com/gofrs/uuid v4.0.0+incompatible h1:1SD/1F5pU8p29ybwgQSwpQk+mwdRrXCYuPhW6m+TnJw=
