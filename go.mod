@@ -7,5 +7,5 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/rjeczalik/notify v0.9.3 // indirect
-	golang.org/x/net v0.12.0
+	golang.org/x/net v0.17.0
 )
